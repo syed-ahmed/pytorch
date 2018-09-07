@@ -297,9 +297,9 @@ CHECKED_CAST = {
             # We're punning here (Backend and DeviceType constructors coincide)
             # but DeviceType is the correct way to classify storages
             'DeviceType::${Backend}, at::scalarTypeToDataType(ScalarType::${ScalarName}))'),
-    'THGenerator*':
+    'Generator*':
         CodeTemplate(
-            'check_generator<${Backend}Generator>(${arg_name}, &globalContext().defaultGenerator(device_type()))'),
+            'check_generator<${Backend}Generator>(${arg_name}, &globalContext().getDefaultGenerator(device_type()))'),
     # This is a cast done via direct-construction
     'IntListStride': CodeTemplate('at::IntList ${result_name} = get_intlist_stride_th(${arg_name});'),
     'real': CodeTemplate('${arg_name}.to${ScalarName}()'),
@@ -319,7 +319,7 @@ CHECKED_USE = {
     'THDenseTensor*': '{}_',
     'THDenseIndexTensor*': '{}_',
     'THStorage*': '{}_.unsafeGetStorageImpl()',
-    'THGenerator*': '{}_->generator',
+    'THGenerator*': '{}_',
     'TensorList': "{0}_.data(), {0}_.size()",
 }
 

@@ -4,6 +4,8 @@
 #include "ATen/core/ATenGeneral.h"
 #include "ATen/CUDAStream.h"
 #include "ATen/core/Generator.h"
+#include "ATen/CPUGenerator.h"
+#include "ATen/cuda/CUDAGenerator.h"
 #include "ATen/Type.h"
 #include "ATen/TypeExtendedInterface.h"
 #include "ATen/Utils.h"
@@ -21,6 +23,7 @@
 #include <cstdint>
 
 namespace at {
+struct Generator;
 
 class Tensor;
 
@@ -49,13 +52,29 @@ class CAFFE2_API Context {
       LegacyTypeDispatch::TypeUniquePtr{t, LegacyTypeDeleter([](Type* p) { delete p; }) });
   }
 
-  Generator & defaultGenerator(DeviceType device_type) {
+  /* Generator */
+  Generator& getDefaultGenerator(DeviceType device_type, int64_t device = -1) {
     initCUDAIfNeeded(device_type);
-    auto & generator = generator_registry[static_cast<int>(device_type)];
-    if(!generator)
-      AT_ERROR(DeviceTypeName(device_type), " backend type not enabled.");
-    return *generator;
+    if (device_type == at::kCPU){
+      return detail::CPUGenerator_getDefaultGenerator();
+    }else if(device_type == at::kCUDA){
+      return at::detail::CUDAGenerator_getDefaultGenerator(device);
+    }else{
+      AT_ERROR(DeviceTypeName(device_type), " backend type not available or is not enabled.");
+    }
   }
+
+  Generator& createGenerator(DeviceType device_type, int64_t device = -1) {
+    initCUDAIfNeeded(device_type);
+    if(device_type == kCPU){
+      return detail::CPUGenerator_createGenerator();
+    }else if(device_type == kCUDA){
+      return detail::CUDAGenerator_createGenerator(device);
+    }else{
+      AT_ERROR(DeviceTypeName(device_type), " backend type not available or is not enabled.");
+    }
+  }
+
   bool hasMKL() const;
   bool hasLAPACK() const;
   bool hasMAGMA() const {
@@ -75,8 +94,6 @@ class CAFFE2_API Context {
   THCState* lazyInitCUDA() {
     std::call_once(thc_init,[&] {
       thc_state = detail::getCUDAHooks().initCUDA();
-      generator_registry[static_cast<int>(DeviceType::CUDA)] =
-        detail::getCUDAHooks().initCUDAGenerator(this);
       detail::getCUDAHooks().registerCUDATypes(this);
     });
     return thc_state.get();
@@ -110,8 +127,6 @@ class CAFFE2_API Context {
   void setBenchmarkCuDNN(bool);
   bool deterministicCuDNN() const;
   void setDeterministicCuDNN(bool);
-  std::unique_ptr<Generator>
-    generator_registry[static_cast<int>(DeviceType::COMPILE_TIME_MAX_DEVICE_TYPES)];
 private:
   void initCUDAIfNeeded(DeviceType p) {
     if (p == DeviceType::CUDA) {

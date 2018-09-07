@@ -8,6 +8,7 @@
 #include "ATen/CPUGenerator.h"
 #include "ATen/CheckGenerator.h"
 #include "ATen/core/Deprecated.h"
+#include "ATen/core/Generator.h"
 #include "ATen/Dispatch.h"
 #include "ATen/NativeFunctions.h"
 #include "ATen/ScalarType.h"
@@ -19,6 +20,7 @@
 #include <cmath>
 #include <cstddef>
 
+struct Generator;
 // Note [Native bindings for legacy TH factory functions]
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // A number of factory functions are implemented in the following way:
@@ -422,7 +424,7 @@ Tensor randn_like(const Tensor& self, const TensorOptions& options) {
 
 namespace {
 template <typename scalar_t>
-void randperm_cpu(Tensor& result, int64_t n, THGenerator* generator) {
+void randperm_cpu(Tensor& result, int64_t n, at::Generator* generator) {
   scalar_t *r__data = result.data<scalar_t>();
 
   result.resize_({n});
@@ -434,7 +436,7 @@ void randperm_cpu(Tensor& result, int64_t n, THGenerator* generator) {
 
   for(int64_t i = 0; i < n - 1; i++)
   {
-    int64_t z = THRandom_random(generator) % (n-i);
+    int64_t z = generator->getState()->engine() % (n-i);
     scalar_t sav = r__data[i*r__stride_0];
     r__data[i*r__stride_0] = r__data[(z+i)*r__stride_0];
     r__data[(z+i)*r__stride_0] = sav;
@@ -443,10 +445,10 @@ void randperm_cpu(Tensor& result, int64_t n, THGenerator* generator) {
 } // namespace
 
 
-THGenerator* get_generator(at::Generator* gen) {
-  auto default_gen = &at::globalContext().defaultGenerator(at::kCPU);
+Generator* get_generator(at::Generator* gen) {
+  auto default_gen = &at::globalContext().getDefaultGenerator(at::kCPU);
   auto gen_ = at::check_generator<at::CPUGenerator>(gen, default_gen);
-  return gen_->generator;
+  return gen_;
 }
 
 Tensor randperm(int64_t n, const TensorOptions& options) {

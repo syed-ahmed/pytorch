@@ -100,7 +100,6 @@ INSTALL(FILES
   THHalf.h
   THTensor.hpp
   THStorageFunctions.hpp
-  THGenerator.hpp
   DESTINATION "${ATEN_INSTALL_INCLUDE_SUBDIR}/TH")
 
 INSTALL(FILES

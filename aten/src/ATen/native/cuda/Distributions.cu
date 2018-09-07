@@ -14,7 +14,6 @@
 #include "ATen/native/Distributions.h"
 
 #include <THC/THCGeneral.h>
-#include <THC/THCTensorRandom.h>
 #include <THC/THCGenerator.hpp>
 #include <THC/THCApply.cuh>
 #include <THC/THCDeviceUtils.cuh>
@@ -24,15 +23,13 @@
 #include <utility>
 #include <type_traits>
 
-THCGenerator* THCRandom_getGenerator(THCState* state);
-
 namespace {
 // increment should be at least the number of curand() random numbers used in
 // each thread.
 std::pair<uint64_t, uint64_t> next_philox_seed(at::Generator* gen, uint64_t increment) {
-  auto gen_ = THCRandom_getGenerator(at::globalContext().getTHCState());
-  uint64_t offset = gen_->state.philox_seed_offset.fetch_add(increment);
-  return std::make_pair(gen_->state.initial_seed, offset);
+  auto default_gen = &at::globalContext().getDefaultGenerator(at::kCUDA);
+  auto gen_ = at::check_generator<at::CUDAGenerator>(gen, default_gen);
+  return gen_->next_philox_seed(increment);
 }
 
 template <typename scalar_t>

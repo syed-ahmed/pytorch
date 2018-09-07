@@ -5,19 +5,21 @@
 #include "THCReduceApplyUtils.cuh"
 #include "THCTensorMathReduce.cuh"
 
-#include <curand_kernel.h>
+#include "ATen/core/Generator.h"
+#include "ATen/cuda/CUDADistributions.cuh"
 
 #define MAX_NUM_BLOCKS 200 
 #define BLOCK_SIZE 256
-/* Separate kernel because curand_log_normal gets extra parameters. */
 
 template <typename T>
-__global__ void generateLogNormal(curandStateMtgp32 *state, int size, T *result, double mean, double stddev)
+__global__ void generateLogNormal(at::Generator* _generator, int size, T *result, double mean, double stddev)
 {
   int idx = blockIdx.x * BLOCK_SIZE + threadIdx.x;
+  auto seeds = _generator->next_philox_seed(10);
+  _generator->getState()->engine.init_engine(seeds.first, idx, seeds.second);
   int rounded_size = THCCeilDiv(size, BLOCK_SIZE) * BLOCK_SIZE;
   for (int i = idx; i < rounded_size; i += BLOCK_SIZE * MAX_NUM_BLOCKS) {
-    float x = curand_log_normal(&state[blockIdx.x], mean, stddev);
+    float x = lognormal_distribution(_generator, mean, stddev);
     if (i < size) {
       result[i] = ScalarConvert<float, T>::to(x);
     }
@@ -25,12 +27,14 @@ __global__ void generateLogNormal(curandStateMtgp32 *state, int size, T *result,
 }
 
 template <>
-__global__ void generateLogNormal<double>(curandStateMtgp32 *state, int size, double *result, double mean, double stddev)
+__global__ void generateLogNormal<double>(at::Generator* _generator, int size, double *result, double mean, double stddev)
 {
   int idx = blockIdx.x * BLOCK_SIZE + threadIdx.x;
+  auto seeds = _generator->next_philox_seed(10);
+  _generator->getState()->engine.init_engine(seeds.first, idx, seeds.second);
   int rounded_size = THCCeilDiv(size, BLOCK_SIZE) * BLOCK_SIZE;
   for (int i = idx; i < rounded_size; i += BLOCK_SIZE * MAX_NUM_BLOCKS) {
-    double x = curand_log_normal_double(&state[blockIdx.x], mean, stddev);
+    double x = lognormal_distribution(_generator, mean, stddev);
     if (i < size) {
       result[i] = x;
     }
@@ -292,7 +296,7 @@ sampleMultinomialOnce(int64_t* dest,
 
 template <typename T>
 __global__ void
-sampleMultinomialWithReplacement(curandStateMtgp32* state,
+sampleMultinomialWithReplacement(at::Generator* _generator,
                                  int totalSamples,
                                  int64_t* dest,
                                  int64_t distributions,
@@ -301,7 +305,7 @@ sampleMultinomialWithReplacement(curandStateMtgp32* state,
   // At the moment, each warp computes one sample value in the binary
   // search due to divergence. It seems possible to compute multiple
   // values and limit divergence though later on. However, no matter
-  // what, all block threads must participate in the curand_uniform
+  // what, all block threads must participate in the standard_uniform_distribution
   // call to update the generator state.
 
   // The block determines the distribution for which we generate a point
@@ -314,7 +318,7 @@ sampleMultinomialWithReplacement(curandStateMtgp32* state,
       int sample = sampleBase + threadIdx.y;
 
       // All threads participate in this
-      T r = ScalarConvert<float, T>::to(curand_uniform(&state[blockIdx.x]));
+      T r = ScalarConvert<float, T>::to(standard_uniform_distribution(_generator));
 
       if (threadIdx.x == 0 && sample < totalSamples) {
         // Find the bucket that a uniform sample lies in
@@ -332,7 +336,7 @@ sampleMultinomialWithReplacement(curandStateMtgp32* state,
 
 template <typename T>
 __global__ void
-sampleMultinomialWithoutReplacement(curandStateMtgp32* state,
+sampleMultinomialWithoutReplacement(at::Generator* _generator,
                                     int totalSamples,
                                     int sample,
                                     int64_t* dest,
@@ -343,7 +347,7 @@ sampleMultinomialWithoutReplacement(curandStateMtgp32* state,
   // At the moment, each warp computes one sample value in the binary
   // search due to divergence. It seems possible to compute multiple
   // values and limit divergence though later on. However, no matter
-  // what, all block threads must participate in the curand_uniform
+  // what, all block threads must participate in the standard_uniform_distribution
   // call to update the generator state.
 
   // The block and warp determines the distribution for which we
@@ -355,7 +359,7 @@ sampleMultinomialWithoutReplacement(curandStateMtgp32* state,
     int64_t curDist = curDistBase + threadIdx.y;
 
     // All threads must participate in this
-    T r = ScalarConvert<float, T>::to(curand_uniform(&state[blockIdx.x]));
+    T r = ScalarConvert<float, T>::to(standard_uniform_distribution(_generator));
 
     if (threadIdx.x == 0 && curDist < distributions) {
       // Find the bucket that a uniform sample lies in

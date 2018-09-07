@@ -120,7 +120,7 @@ PyObject * THCPModule_getRNGState(PyObject *_unused)
   using namespace torch::autograd;
   HANDLE_TH_ERRORS
   Variable var = torch::empty(0, at::device(at::kCPU).dtype(at::kByte));
-  THCRandom_getRNGState(state, (THByteTensor*)(var.data().unsafeGetTensorImpl()));
+  //THCRandom_getRNGState(state, (THByteTensor*)(var.data().unsafeGetTensorImpl()));
   return THPVariable_Wrap(var);
   END_HANDLE_TH_ERRORS
 }
@@ -133,7 +133,7 @@ PyObject * THCPModule_setRNGState(PyObject *_unused, PyObject *obj)
         Py_TYPE(obj)->tp_name);
   }
   auto& tensor = THPVariable_UnpackData(obj);
-  THCRandom_setRNGState(state, (THByteTensor*)tensor.unsafeGetTensorImpl());
+  //THCRandom_setRNGState(state, (THByteTensor*)tensor.unsafeGetTensorImpl());
   Py_RETURN_NONE;
   END_HANDLE_TH_ERRORS
 }
@@ -143,7 +143,8 @@ PyObject * THCPModule_manualSeed(PyObject *_unused, PyObject *seed)
   HANDLE_TH_ERRORS
   THPUtils_assert(THPUtils_checkLong(seed), "manual_seed expected a long, "
           "but got %s", THPUtils_typename(seed));
-  THCRandom_manualSeed(state, THPUtils_unpackLong(seed));
+  auto generator = at::globalContext().getDefaultGenerator(at::kCUDA);
+  generator.manualSeed(THPUtils_unpackLong(seed));
   Py_RETURN_NONE;
   END_HANDLE_TH_ERRORS
 }
@@ -153,7 +154,8 @@ PyObject * THCPModule_manualSeedAll(PyObject *_unused, PyObject *seed)
   HANDLE_TH_ERRORS
   THPUtils_assert(THPUtils_checkLong(seed), "manual_seed expected a long, "
           "but got %s", THPUtils_typename(seed));
-  THCRandom_manualSeedAll(state, THPUtils_unpackLong(seed));
+  auto generator = at::globalContext().getDefaultGenerator(at::kCUDA);
+  generator.manualSeedAll(THPUtils_unpackLong(seed));
   Py_RETURN_NONE;
   END_HANDLE_TH_ERRORS
 }
@@ -161,21 +163,24 @@ PyObject * THCPModule_manualSeedAll(PyObject *_unused, PyObject *seed)
 PyObject * THCPModule_seed(PyObject *_unused)
 {
   HANDLE_TH_ERRORS
-  return THPUtils_packUInt64(THCRandom_seed(state));
+  auto generator = at::globalContext().getDefaultGenerator(at::kCUDA);
+  return THPUtils_packUInt64(generator.seed());
   END_HANDLE_TH_ERRORS
 }
 
 PyObject * THCPModule_seedAll(PyObject *_unused)
 {
   HANDLE_TH_ERRORS
-  return THPUtils_packUInt64(THCRandom_seedAll(state));
+  auto generator = at::globalContext().getDefaultGenerator(at::kCUDA);
+  return THPUtils_packUInt64(generator.seedAll());
   END_HANDLE_TH_ERRORS
 }
 
 PyObject * THCPModule_initialSeed(PyObject *_unused)
 {
   HANDLE_TH_ERRORS
-  return THPUtils_packUInt64(THCRandom_initialSeed(state));
+  auto generator = at::globalContext().getDefaultGenerator(at::kCUDA);
+  return THPUtils_packUInt64(generator.getStartingSeed());
   END_HANDLE_TH_ERRORS
 }
 

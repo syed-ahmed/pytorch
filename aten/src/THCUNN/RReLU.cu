@@ -3,41 +3,23 @@
 #include "THCHalfAutoNumerics.cuh"
 #include <THC/THCApply.cuh>
 #include "common.h"
-#include <curand.h>
-#include <curand_kernel.h>
+#include "ATen/cuda/CUDADistributions.cuh"
+#include "ATen/core/Generator.h"
 
 // copied from cutorch/lib/THC/THCTensorRandom.cu
 #define MAX_NUM_BLOCKS 64
 #define BLOCK_SIZE 256
 #define NUM_BLOCKS(n) min((int)THCCeilDiv(n, (ptrdiff_t) BLOCK_SIZE), MAX_NUM_BLOCKS)
 
-template<typename T>
-inline T __device__ curand_uniform_type(curandStateMtgp32 *state);
-
-template <>
-inline THHalf __device__ curand_uniform_type<THHalf>(curandStateMtgp32 *state) {
-  return ScalarConvert<float, THHalf>::to(curand_uniform(state));
-}
-
-template <>
-inline float __device__ curand_uniform_type<float>(curandStateMtgp32 *state) {
-  return curand_uniform(state);
-}
-
-template <>
-inline double __device__ curand_uniform_type<double>(curandStateMtgp32 *state) {
-  return curand_uniform_double(state);
-}
-
 template <typename T>
-__global__ void rreluUpdateOutputTrain(int n, curandStateMtgp32 *state,
+__global__ void rreluUpdateOutputTrain(int n, at::Generator* _generator,
   T *input, T* noise, T *output, double a, double b)
 {
   CUDA_KERNEL_LOOP(i, n)
   {
     if (input[i] <= 0)
     {
-      T r = curand_uniform_type<T>(&state[blockIdx.x]);
+      T r = standard_uniform_distribution(_generator);
       r = ScalarConvert<double, T>::to(r * (b-a) + a);
       output[i] = input[i] * r;
       noise[i] = r;

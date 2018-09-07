@@ -14,9 +14,6 @@ struct THPGenerator {
 #define THPGenerator_Check(obj) \
   PyObject_IsInstance(obj, THPGeneratorClass)
 
-#define THPGenerator_TH_CData(obj) \
-  (THGenerator*)((THPGenerator*)obj)->cdata->unsafeGetTH()
-
 THP_API PyObject * THPGenerator_New();
 
 // Creates a new Python object wrapping the at::Generator. The reference is

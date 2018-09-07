@@ -13,8 +13,4 @@ Device CPUTypeDefault::getDeviceFromPtr(void * data) const {
   return DeviceType::CPU;
 }
 
-std::unique_ptr<Generator> CPUTypeDefault::generator() const {
-  return std::unique_ptr<Generator>(new CPUGenerator(&at::globalContext()));
-}
-
 } // namespace at

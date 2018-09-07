@@ -6,6 +6,10 @@
 
 namespace at {
 
+/*
+* Function that checks if a new generator is provided by a function.
+* Otherwise, uses the default generator.
+*/
 template <typename T>
 static inline T * check_generator(Generator * expr, Generator * defaultValue) {
   if (!expr)

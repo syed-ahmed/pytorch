@@ -58,13 +58,12 @@ TEST(TestScalar, TestScalar) {
   Scalar bar = 3.0;
   Half h = bar.toHalf();
   Scalar h2 = h;
-  cout << "H2: " << h2.toDouble() << " " << what.toFloat() << " "
-       << bar.toDouble() << " " << what.isIntegral() << "\n";
-  Generator& gen = at::globalContext().defaultGenerator(at::kCPU);
-  ASSERT_NO_THROW(gen.seed());
-  auto&& C = at::globalContext();
-  if (at::hasCUDA()) {
-    auto t2 = zeros({4, 4}, at::kCUDA);
+  cout << "H2: " << h2.toDouble() << " " << what.toFloat() << " " << bar.toDouble() << " " << what.isIntegral() <<  "\n";
+  Generator & gen = at::globalContext().getDefaultGenerator(at::kCPU);
+  REQUIRE_NOTHROW(gen.seed());
+  auto && C = at::globalContext();
+  if(at::hasCUDA()) {
+    auto t2 = zeros({4,4}, at::kCUDA);
     cout << &t2 << "\n";
   }
   auto t = ones({4, 4});

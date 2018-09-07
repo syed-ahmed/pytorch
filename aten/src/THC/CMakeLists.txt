@@ -26,7 +26,6 @@ set(ATen_CUDA_SRCS ${ATen_CUDA_SRCS}
   ${CMAKE_CURRENT_SOURCE_DIR}/THCStream.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/THCTensor.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/THCTensorCopy.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/THCTensorRandom.cpp
 
   ${CMAKE_CURRENT_SOURCE_DIR}/THCReduceApplyUtils.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/THCBlas.cu
@@ -63,7 +62,6 @@ INSTALL(FILES
           THCTensor.h
           THCTensorCopy.h
           THCTensorCopy.hpp
-          THCTensorRandom.h
           THCTensorMath.h
           THCApply.cuh
           THCReduce.cuh

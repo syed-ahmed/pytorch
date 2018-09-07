@@ -14,7 +14,6 @@
 #include "ATen/ATen.h"
 
 #if USE_CUDA_FUSER
-  #include "THC/THCTensorRandom.h"
   #include "THC/THCGenerator.hpp"
   THCGenerator* THCRandom_getGenerator(THCState* state);
 #endif // USE_CUDA_FUSER

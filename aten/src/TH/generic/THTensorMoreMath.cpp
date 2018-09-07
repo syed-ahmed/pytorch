@@ -648,7 +648,7 @@ void THTensor_(arange)(THTensor *r_, accreal xmin, accreal xmax, accreal step) {
   TH_TENSOR_APPLY(scalar_t, r_, *r__data = xmin + (i++)*step;);
 }
 
-void THTensor_(randperm)(THTensor *r_, THGenerator *_generator, int64_t n)
+void THTensor_(randperm)(THTensor *r_, at::Generator *_generator, int64_t n)
 {
   scalar_t *r__data;
   int64_t r__stride_0;

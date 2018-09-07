@@ -19,7 +19,6 @@
 #include <mkl.h>
 #endif
 
-#include "TH/THGenerator.hpp"
 #include "TH/THRandom.h"
 
 namespace at { namespace native {

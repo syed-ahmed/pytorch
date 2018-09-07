@@ -18,8 +18,6 @@
 #include <assert.h>
 #include <cpuinfo.h>
 
-#include "TH/THRandom.h"
-#include "TH/THGenerator.hpp"
 #include "TH/THMath.h"
 
 namespace {
@@ -55,7 +53,8 @@ namespace {
  */
 
 
-int64_t sample_poisson(double lambda, THGenerator* generator) {
+int64_t sample_poisson(double lambda, at::Generator* generator) {
+  std::uniform_real_distribution<double> standard_uniform(0.0, 1.0);
   if (lambda >= 10) {
     // transformed rejection method, (Hoermann, 1993)
     int64_t k;
@@ -69,8 +68,8 @@ int64_t sample_poisson(double lambda, THGenerator* generator) {
     vr = 0.9277 - 3.6224 / (b - 2);
 
     while (1) {
-      U = THRandom_standard_uniform(generator) - 0.5;
-      V = THRandom_standard_uniform(generator);
+      U = standard_uniform(generator->getState()->engine) - 0.5;
+      V = standard_uniform(generator->getState()->engine);
       us = 0.5 - std::fabs(U);
       k = (int64_t)std::floor((2 * a / us + b) * U + lambda + 0.43);
       if ((us >= 0.07) && (V <= vr)) {
@@ -94,7 +93,7 @@ int64_t sample_poisson(double lambda, THGenerator* generator) {
     X = 0;
     prod = 1.0;
     while (1) {
-      U = THRandom_standard_uniform(generator);
+      U = standard_uniform(generator->getState()->engine);
       prod *= U;
       if (prod > enlam) {
         X += 1;
@@ -127,14 +126,15 @@ Tensor& bernoulli_out(Tensor& result, const Tensor& self, Generator* gen) {
 
 Tensor& bernoulli_tensor_cpu_(Tensor& self, const Tensor& p_, Generator* gen) {
   AT_DISPATCH_ALL_TYPES(self.type(), "bernoulli_tensor_cpu_self_", [&] {
-    THGenerator* generator = get_generator(gen);
-    std::lock_guard<std::mutex> lock(generator->mutex);
+    Generator* generator = get_generator(gen);
+    std::lock_guard<std::mutex> lock(generator->getState()->mutex);
     using self_t = scalar_t;
     if (p_.type().scalarType() == kDouble) {
       auto p = std::get<0>(expand_inplace(self, p_.to(kCPU)));
       CPU_tensor_apply2<self_t, double>(
         self, p, [generator](self_t& ret_val, double& p_val) {
-          ret_val = static_cast<self_t>(THRandom_bernoulli(generator, p_val));
+          std::bernoulli_distribution bernoulli(p_val);
+          ret_val = static_cast<self_t>(bernoulli(generator->getState()->engine));
         });
     } else {
       AT_DISPATCH_FLOATING_TYPES(p_.type(), "bernoulli_tensor_cpu_p_", [&] {
@@ -142,7 +142,8 @@ Tensor& bernoulli_tensor_cpu_(Tensor& self, const Tensor& p_, Generator* gen) {
         using p_t = scalar_t;
         CPU_tensor_apply2<self_t, p_t>(
           self, p, [generator](self_t& ret_val, p_t& p_val) {
-            ret_val = static_cast<self_t>(THRandom_bernoulliFloat(generator, static_cast<p_t>(p_val)));
+            std::bernoulli_distribution bernoulli(p_val);
+            ret_val = static_cast<self_t>(bernoulli(generator->getState()->engine));
           });
       });
     }
@@ -161,11 +162,12 @@ Tensor& bernoulli_scalar_cpu_(Tensor& self, double p, Generator* gen) {
   }
 #endif
   AT_DISPATCH_ALL_TYPES(self.type(), "bernoulli_scalar_cpu_", [&] {
-    THGenerator* generator = get_generator(gen);
-    std::lock_guard<std::mutex> lock(generator->mutex);
+    Generator* generator = get_generator(gen);
+    std::lock_guard<std::mutex> lock(generator->getState()->mutex);
     CPU_tensor_apply1<scalar_t>(
         self, [generator, p](scalar_t& ret_val) {
-          ret_val = static_cast<scalar_t>(THRandom_bernoulli(generator, p));
+          std::bernoulli_distribution bernoulli(p);
+          ret_val = static_cast<scalar_t>(bernoulli(generator->getState()->engine));
         });
   });
   return self;
@@ -191,8 +193,8 @@ Tensor _standard_gamma_grad_cpu(const Tensor& self, const Tensor& output) {
 Tensor _s_poisson_cpu(const Tensor& lambda, Generator *gen) {
   Tensor ret = at::zeros(lambda.sizes(), lambda.type());
   AT_DISPATCH_FLOATING_TYPES(ret.type(), "poisson", [&] {
-    THGenerator* generator = get_generator(gen);
-    std::lock_guard<std::mutex> lock(generator->mutex);
+    Generator* generator = get_generator(gen);
+    std::lock_guard<std::mutex> lock(generator->getState()->mutex);
     CPU_tensor_apply2<scalar_t, scalar_t>(ret, lambda,
       [generator](scalar_t& ret_val, const scalar_t& lambda){
         ret_val = static_cast<scalar_t>(sample_poisson(static_cast<double>(lambda), generator));
@@ -205,15 +207,17 @@ Tensor _s_poisson_cpu(const Tensor& lambda, Generator *gen) {
 Tensor _s_gamma_cpu(const Tensor& alpha, Generator *gen) {
   Tensor ret = at::zeros(alpha.sizes(), alpha.type());
   AT_DISPATCH_FLOATING_TYPES(ret.type(), "gamma", [&] {
-    THGenerator* generator = get_generator(gen);
-    std::lock_guard<std::mutex> lock(generator->mutex);
+    Generator* generator = get_generator(gen);
+    std::lock_guard<std::mutex> lock(generator->getState()->mutex);
     CPU_tensor_apply2<scalar_t, scalar_t>(ret, alpha,
       [generator](scalar_t& ret_val, const scalar_t& alpha){
         BaseSampler<double> standard_uniform([generator] () {
-          return THRandom_standard_uniform(generator);
+          std::uniform_real_distribution<double> standard_uniform(0.0, 1.0);
+          return standard_uniform(generator->getState()->engine);
         });
         BaseSampler<double> standard_normal([generator] () {
-          return THRandom_normal(generator, 0.0, 1.0);
+          std::normal_distribution<double> normal{0.0, 1.0};
+          return normal(generator->getState()->engine);
         });
         auto sample = sample_gamma<scalar_t, double>(alpha, standard_uniform, standard_normal);
         ret_val = std::max(std::numeric_limits<scalar_t>::min(), (scalar_t) sample);

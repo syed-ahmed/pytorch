@@ -9,8 +9,6 @@
 #include <sstream>
 #include <string>
 #include <stdexcept>
-
-#include "ATen/CPUGenerator.h"
 #include "ATen/RegisterCPU.h"
 #include "ATen/Tensor.h"
 #include <ATen/cpu/FlushDenormal.h>
@@ -34,9 +32,6 @@ Context::Context()
 
   THSetDefaultErrorHandler(errorHandler,nullptr);
   THSetDefaultArgErrorHandler(argErrorHandler,nullptr);
-
-  generator_registry[static_cast<int>(DeviceType::CPU)]
-    .reset(new CPUGenerator(this));
   register_cpu_types(this);
 }
 

@@ -11,7 +11,7 @@ void THNN_(RReLU_updateOutput)(
           accreal upper_,
           bool train,
           bool inplace,
-          THGenerator *generator)
+          at::Generator *generator)
 {
   scalar_t lower = TH_CONVERT_ACCREAL_TO_REAL(lower_);
   scalar_t upper = TH_CONVERT_ACCREAL_TO_REAL(upper_);

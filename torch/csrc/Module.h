@@ -3,6 +3,10 @@
 
 #define THP_STATELESS_ATTRIBUTE_NAME "_torch"
 
-extern THPGenerator *THPDefaultGenerator;
+extern THPGenerator *THPDefaultCPUGenerator;
+
+#ifdef USE_CUDA
+extern THPGenerator *THPDefaultCUDAGenerator;
+#endif
 
 #endif

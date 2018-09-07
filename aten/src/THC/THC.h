@@ -12,7 +12,6 @@
 #include "THCStream.h"
 #include "THCTensor.h"
 #include "THCTensorCopy.h"
-#include "THCTensorRandom.h"
 #include "THCTensorMath.h"
 
 #endif

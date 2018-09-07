@@ -3,6 +3,7 @@
 #else
 
 #include "../common.h"
+#include "ATen/ATen.h"
 
 void THNN_(RReLU_updateOutput)(
            THCState *state,
@@ -16,7 +17,7 @@ void THNN_(RReLU_updateOutput)(
            void *generator)
 {
   THCUNN_assertSameGPU(state, 3, input, output, noise);
-  struct curandStateMtgp32* gen_states = THCRandom_generatorStates(state);
+  at::Generator* gen = &at::globalContext().getDefaultGenerator(at::kCUDA);
 
   if (train)
   {
@@ -28,7 +29,7 @@ void THNN_(RReLU_updateOutput)(
     if (inplace)
     {
       rreluUpdateOutputTrain<<<NUM_BLOCKS(n), BLOCK_SIZE, 0, THCState_getCurrentStream(state)>>>(
-        n, gen_states, input_data, noise_data, input_data, lower, upper);
+        n, gen, input_data, noise_data, input_data, lower, upper);
       THCTensor_(set)(state, output, input);
     }
     else
@@ -36,7 +37,7 @@ void THNN_(RReLU_updateOutput)(
       THCTensor_(resizeAs)(state, output, input);
       scalar_t *output_data = THCTensor_(data)(state, output);
       rreluUpdateOutputTrain<<<NUM_BLOCKS(n), BLOCK_SIZE, 0, THCState_getCurrentStream(state)>>>(
-        n, gen_states, input_data, noise_data, output_data, lower, upper);
+        n, gen, input_data, noise_data, output_data, lower, upper);
     }
     THCudaCheck(cudaGetLastError());
     THCTensor_(free)(state, input);

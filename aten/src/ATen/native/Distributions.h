@@ -9,14 +9,13 @@
 #include "ATen/CPUGenerator.h"
 #include "ATen/CheckGenerator.h"
 #include "ATen/Generator.h"
-#include "TH/THGenerator.hpp"
 
 namespace at {namespace native {
 
-static inline THGenerator* get_generator(at::Generator* gen) {
-  auto default_gen = &at::globalContext().defaultGenerator(at::kCPU);
+static inline at::Generator* get_generator(at::Generator* gen) {
+  auto default_gen = &at::globalContext().getDefaultGenerator(at::kCPU);
   auto gen_ = at::check_generator<at::CPUGenerator>(gen, default_gen);
-  return gen_->generator;
+  return gen_;
 }
 
 }}  // namespace at::native

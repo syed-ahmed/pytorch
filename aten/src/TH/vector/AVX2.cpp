@@ -72,7 +72,7 @@ static void normal_fill_16_AVX2(float *data,
 
 void THFloatVector_normal_fill_AVX2(float *data,
                                     const int64_t size,
-                                    THGenerator *generator,
+                                    at::Generator *generator,
                                     const float mean,
                                     const float stddev)
 {
