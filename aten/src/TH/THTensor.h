@@ -14,7 +14,6 @@
 #include "THGenerateHalfType.h"
 
 /* random numbers */
-#include "THRandom.h"
 #include "generic/THTensorRandom.h"
 #include "THGenerateAllTypes.h"
 
