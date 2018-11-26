@@ -1790,8 +1790,11 @@ class _TestTorchMixin(object):
             typecasts.append(lambda x: x.int())
 
         shape = (11, 5)
-        tensor = cast(torch.LongTensor(shape).random_(-10, 10))
+        tensor = cast(torch.LongTensor(shape).random_(0, 10))
         exps = [0, 1, 2, 5, cast(torch.LongTensor(shape).random_(0, 20))]
+        print("Debuggg")
+        print(tensor)
+        print(exps)
         for typecast in typecasts:
             for exp in exps:
                 t = typecast(tensor)
