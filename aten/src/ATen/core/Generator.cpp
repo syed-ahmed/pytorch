@@ -193,18 +193,6 @@ void Generator::setCPUEngine(std::mt19937_64 engine) {
 }
 
 /* 
-* Gets a 64 bit random number.
-* Throws error for other engines
-*/
-uint64_t Generator::random64() {
-  std::lock_guard<std::mutex> lock(this->mutex);
-  if(this->state_->device_type != at::kCPU) {
-    AT_ERROR("random64() function called for this Generator. It is only valid in CPU Generator");
-  }
-  return this->state_->cpu_engine();
-}
-
-/* 
 * Increments the philox offset of CUDA Generator when called in a kernel launch 
 * returns the current seed and the old offset (before increment) as a std::pair 
 * for the kernel to use

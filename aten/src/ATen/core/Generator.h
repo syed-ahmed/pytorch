@@ -76,7 +76,6 @@ struct CAFFE2_API Generator {
   void setCPUEngine(std::mt19937_64 engine);
 
   // Methods
-  uint64_t random64();
   std::pair<uint64_t, uint64_t> incrementPhiloxOffset(uint64_t total_elements,
                                                 uint64_t grid_size,
                                                 uint64_t block_size,

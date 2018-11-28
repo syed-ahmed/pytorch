@@ -13,6 +13,7 @@ void THNN_(RReLU_updateOutput)(
           bool inplace,
           at::Generator* generator)
 {
+  auto& cpu_engine = generator->getCPUEngine();
   scalar_t lower = TH_CONVERT_ACCREAL_TO_REAL(lower_);
   scalar_t upper = TH_CONVERT_ACCREAL_TO_REAL(upper_);
   if (train)
@@ -25,7 +26,7 @@ void THNN_(RReLU_updateOutput)(
         if (*input_data <= 0)
         {
           std::uniform_real_distribution<double> uniform(lower, upper);
-          const scalar_t r = (scalar_t)uniform(generator->getCPUEngine());
+          const scalar_t r = (scalar_t)uniform(cpu_engine);
           *input_data = (*input_data) * r;
           *noise_data = r;
         }
@@ -43,7 +44,7 @@ void THNN_(RReLU_updateOutput)(
         if (*input_data <= 0)
         {
           std::uniform_real_distribution<double> uniform(lower, upper);
-          const scalar_t r = (scalar_t)uniform(generator->getCPUEngine());
+          const scalar_t r = (scalar_t)uniform(cpu_engine);
           *output_data = (*input_data) * r;
           *noise_data = r;
         }

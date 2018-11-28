@@ -81,6 +81,7 @@ void THFloatVector_normal_fill_AVX2(float *data,
   const __m256 minus_two = _mm256_set1_ps(-2.0f);
   const __m256 mean_v = _mm256_set1_ps(mean);
   const __m256 stddev_v = _mm256_set1_ps(stddev);
+  auto& cpu_engine = generator->getCPUEngine();
 
   // First fill the data with the uniform numbers. Box-Mueller is a 2 -> 2
   // mapping of 2 uniform numbers to 2 normal numbers (per iteration), so we
@@ -88,7 +89,7 @@ void THFloatVector_normal_fill_AVX2(float *data,
   // use the single buffer for both.
   for (int64_t i = 0; i < size; ++i) {
     std::uniform_real_distribution<float> uniform(0, 1);
-    data[i] = uniform(generator->getCPUEngine());
+    data[i] = uniform(cpu_engine);
   }
 
   for (int64_t i = 0; i < size - 15; i += 16) {
@@ -100,7 +101,7 @@ void THFloatVector_normal_fill_AVX2(float *data,
     data = data + size - 16;
     for (int i = 0; i < 16; ++i) {
       std::uniform_real_distribution<float> uniform(0, 1);
-      data[i] = uniform(generator->getCPUEngine());
+      data[i] = uniform(cpu_engine);
     }
     normal_fill_16_AVX2(data, &two_pi, &one, &minus_two, &mean_v, &stddev_v);
   }

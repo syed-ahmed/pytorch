@@ -177,7 +177,7 @@ typedef philox_engine Philox4_32_10;
 * Note: how to get a range of [0,1) from {0,1,..2^32-1}
 * https://lemire.me/blog/2017/02/28/how-many-floating-point-numbers-are-in-the-interval-01/
 */
-C10_DEVICE  __inline__ float standard_uniform_distribution(Philox4_32_10& engine) {
+C10_DEVICE  __forceinline__ float standard_uniform_distribution(Philox4_32_10& engine) {
   const uint32_t random32_val = engine();
   float result = (random32_val & ((1ULL << 24) - 1)) * ::ldexp(1.0, -24);
   return result;
@@ -186,7 +186,7 @@ C10_DEVICE  __inline__ float standard_uniform_distribution(Philox4_32_10& engine
 /*
 * Produces a normal distribution given philox random, with mean = 0 and standard deviation = 1
 */
-C10_DEVICE  __inline__ float2 normal_distribution(Philox4_32_10& engine) {
+C10_DEVICE  __forceinline__ float2 normal_distribution(Philox4_32_10& engine) {
   // Box-Muller method (https://en.wikipedia.org/wiki/Box%E2%80%93Muller_transform)
   // We are not caching and just returning one of the variables.
   float2 result;
@@ -201,7 +201,7 @@ C10_DEVICE  __inline__ float2 normal_distribution(Philox4_32_10& engine) {
 /*
 * Produces a lognormal distribution given philox random, mean and standard deviation
 */
-C10_DEVICE  __inline__ float2 lognormal_distribution(Philox4_32_10& engine, float mean, float stdv) {
+C10_DEVICE  __forceinline__ float2 lognormal_distribution(Philox4_32_10& engine, float mean, float stdv) {
   float2 result;
   result.x = ::expf((normal_distribution(engine).x * stdv) + mean);
   result.y = ::expf((normal_distribution(engine).y * stdv) + mean);

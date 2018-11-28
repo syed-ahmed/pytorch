@@ -22,10 +22,10 @@ __device__ inline at::Half half_uniform_scale_and_shift(float x, double a, doubl
 #define GENERATE_KERNEL1(NAME, T, ARG1, RAND_T, RAND_FUNC, TRANSFORM)      \
 __global__ void NAME(std::pair<uint64_t, uint64_t> seeds, int size, T *result, ARG1)      \
 {                                                                              \
-  int idx = blockIdx.x * BLOCK_SIZE + threadIdx.x;                             \
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;                             \
   at::cuda::Philox4_32_10 engine(seeds.first, idx, seeds.second);              \
-  int rounded_size = THCCeilDiv(size, BLOCK_SIZE) * BLOCK_SIZE;                \
-  for (int i = idx; i < rounded_size; i += BLOCK_SIZE * MAX_NUM_BLOCKS) {      \
+  int rounded_size = ((size - 1)/(blockDim.x * gridDim.x)+1) * blockDim.x * gridDim.x;                \
+  for (int i = idx; i < rounded_size; i += gridDim.x * blockDim.x) {      \
     RAND_T x = static_cast<RAND_T>(RAND_FUNC);                         \
     if (i < size) {                                                            \
       T y = TRANSFORM;                                                         \
@@ -37,10 +37,10 @@ __global__ void NAME(std::pair<uint64_t, uint64_t> seeds, int size, T *result, A
 #define GENERATE_KERNEL2(NAME, T, ARG1, ARG2, RAND_T, RAND_FUNC, TRANSFORM)      \
 __global__ void NAME(std::pair<uint64_t, uint64_t> seeds, int size, T *result, ARG1, ARG2)      \
 {                                                                                               \
-  int idx = blockIdx.x * BLOCK_SIZE + threadIdx.x;                                              \
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;                                              \
   at::cuda::Philox4_32_10 engine(seeds.first, idx, seeds.second);                               \
-  int rounded_size = THCCeilDiv(size, BLOCK_SIZE) * BLOCK_SIZE;                                 \
-  for (int i = idx; i < rounded_size; i += BLOCK_SIZE * MAX_NUM_BLOCKS) {                       \
+  int rounded_size = ((size - 1)/(blockDim.x * gridDim.x)+1) * blockDim.x * gridDim.x;                                 \
+  for (int i = idx; i < rounded_size; i += gridDim.x * blockDim.x) {                       \
     RAND_T x = static_cast<RAND_T>(RAND_FUNC);                                          \
     if (i < size) {                                                                             \
       T y = TRANSFORM;                                                                          \
@@ -52,25 +52,28 @@ __global__ void NAME(std::pair<uint64_t, uint64_t> seeds, int size, T *result, A
 #define GENERATE_KERNEL3(NAME, T, ARG1, ARG2, RAND_T, RAND_FUNC, TRANSFORM)      \
 __global__ void NAME(std::pair<uint64_t, uint64_t> seeds, int size, T *result, ARG1, ARG2)      \
 {                                                                                               \
-  int idx = blockIdx.x * BLOCK_SIZE + threadIdx.x;                                              \
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;                                              \
   at::cuda::Philox4_32_10 engine(seeds.first, idx, seeds.second);                               \
-  int cached_normal = 0;                                                                        \
-  RAND_T normal_vals = make_float2(0,0);                                                        \
-  int rounded_size = THCCeilDiv(size, BLOCK_SIZE) * BLOCK_SIZE;                                 \
-  for (int i = idx; i < rounded_size; i += BLOCK_SIZE * MAX_NUM_BLOCKS) {                       \
-    float x;                                                                                    \
-    if(cached_normal){                                                                          \
-      cached_normal = 0;                                                                        \
-      x = normal_vals.y;                                                                        \
-    }else{                                                                                      \
-      normal_vals = at::cuda::normal_distribution(engine);                                      \
-      cached_normal = 1;                                                                        \
-      x = normal_vals.x;                                                                        \
+  int UNROLL = 2;                                                                        \
+  int rounded_size = ((size - 1)/(blockDim.x * gridDim.x * UNROLL)+1) *                         \
+        blockDim.x * gridDim.x * UNROLL;                                 \
+  for (int i = idx; i < rounded_size; i += gridDim.x * blockDim.x*UNROLL) {                       \
+    RAND_T dist_vals = static_cast<RAND_T>(RAND_FUNC);                                                                                    \
+    for (int ii = 0; ii < UNROLL; ii++) {                                                       \
+      int li = i + blockDim.x * gridDim.x * ii;                                                 \
+      if (li < size) {                                                                          \
+        if(ii == 0) { \
+          T x = dist_vals.x; \
+          T y = TRANSFORM; \
+          result[li] = y; \
+        }else{ \
+          T x = dist_vals.y; \
+          T y = TRANSFORM; \
+          result[li] = y; \
+        }                                                                             \
+      }                                                                                         \
     }                                                                                           \
-    if (i < size) {                                                                             \
-      T y = TRANSFORM;                                                                          \
-      result[i] = y;                                                                            \
-    }                                                                                           \
+    __syncthreads(); \
   }                                                                                             \
 }
 

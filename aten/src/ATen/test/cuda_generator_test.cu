@@ -196,7 +196,6 @@ TEST(CUDAGenerator, TestCallingCPUGeneratorMethod) {
   ASSERT_THROW(default_gen.getCPUEngine(), c10::Error);
   std::mt19937_64 engine;
   ASSERT_THROW(default_gen.setCPUEngine(engine), c10::Error);
-  ASSERT_THROW(default_gen.random64(), c10::Error);
 }
 
 template <typename scalar_t>
