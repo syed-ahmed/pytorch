@@ -54,7 +54,7 @@ void THTensor_(cappedRandom)(THTensor *self, at::Generator *_generator, int64_t 
 void THTensor_(geometric)(THTensor *self, at::Generator *_generator, double p)
 {
   auto& cpu_engine = _generator->getCPUEngine();
-  std::geometric_distribution<> geometric(p);
+  static std::geometric_distribution<> geometric(p);
   TH_TENSOR_APPLY(scalar_t, self, *self_data = (scalar_t)geometric(cpu_engine););
 }
 
@@ -70,10 +70,10 @@ void THTensor_(uniform)(THTensor *self, at::Generator *_generator, double a, dou
 {
   auto& cpu_engine = _generator->getCPUEngine();
   #if defined(TH_REAL_IS_FLOAT)
-  std::uniform_real_distribution<float> uniform((float)a, (float)b);
+  static std::uniform_real_distribution<float> uniform((float)a, (float)b);
   TH_TENSOR_APPLY(scalar_t, self, *self_data = (scalar_t)uniform(cpu_engine););
   #else
-  std::uniform_real_distribution<double> uniform(a, b);
+  static std::uniform_real_distribution<double> uniform(a, b);
   TH_TENSOR_APPLY(scalar_t, self, *self_data = (scalar_t)uniform(cpu_engine););
   #endif
 }
@@ -85,7 +85,7 @@ void THTensor_(normal)(THTensor *self, at::Generator *_generator, double mean, d
     THVector_(normal_fill)(THStorage_(data)(THTensor_getStoragePtr(self)) + self->storage_offset(), size, _generator, mean, stddev);
   } else {
     auto& cpu_engine = _generator->getCPUEngine();
-    std::normal_distribution<double> normal{mean, stddev};
+    static std::normal_distribution<double> normal{mean, stddev};
     TH_TENSOR_APPLY(scalar_t, self, *self_data = (scalar_t)normal(cpu_engine););
   }
 }
@@ -116,7 +116,7 @@ void THTensor_(normal_means_stddevs)(THTensor *self, at::Generator *gen, THTenso
 void THTensor_(exponential)(THTensor *self, at::Generator *_generator, double lambda)
 {
   auto& cpu_engine = _generator->getCPUEngine();
-  std::exponential_distribution<double> exponential(lambda);
+  static std::exponential_distribution<double> exponential(lambda);
   TH_TENSOR_APPLY(scalar_t, self, *self_data = (scalar_t)exponential(cpu_engine););
 }
 
@@ -125,14 +125,14 @@ void THTensor_(exponential)(THTensor *self, at::Generator *_generator, double la
 void THTensor_(cauchy)(THTensor *self, at::Generator *_generator, double median, double sigma)
 {
   auto& cpu_engine = _generator->getCPUEngine();
-  std::cauchy_distribution<double> cauchy(median, sigma);
+  static std::cauchy_distribution<double> cauchy(median, sigma);
   TH_TENSOR_APPLY(scalar_t, self, *self_data = (scalar_t)cauchy(cpu_engine););
 }
 
 void THTensor_(logNormal)(THTensor *self, at::Generator *_generator, double mean, double stdv)
 {
   auto& cpu_engine = _generator->getCPUEngine();
-  std::lognormal_distribution<double> logNormal(mean, stdv);
+  static std::lognormal_distribution<double> logNormal(mean, stdv);
   TH_TENSOR_APPLY(scalar_t, self, *self_data = (scalar_t)logNormal(cpu_engine););
 }
 
@@ -234,11 +234,11 @@ void THTensor_(multinomialAliasDraw)(THLongTensor *self, at::Generator *_generat
 
   for (i=0; i < output_nelem; i++)
     {
-      std::uniform_real_distribution<double> uniform(0, K);
+      static std::uniform_real_distribution<double> uniform(0, K);
       rand_ind = uniform(cpu_engine);
 
       _q = THTensor_(fastGet1d)(q, rand_ind);
-      std::bernoulli_distribution bernoulli(_q);
+      static std::bernoulli_distribution bernoulli(_q);
       _mask = static_cast<int64_t>(bernoulli(cpu_engine));
 
       J_sample = THLongTensor_fastGet1d(J, rand_ind);
@@ -335,7 +335,7 @@ void THTensor_(multinomial)(THLongTensor *self, at::Generator *_generator, THTen
     for (j=0; j<n_sample; j++)
     {
       /* sample a probability mass from a uniform distribution */
-      std::uniform_real_distribution<double> uniform(0, 1);
+      static std::uniform_real_distribution<double> uniform(0, 1);
       double uniform_sample = uniform(cpu_engine);
       /* Do a binary search for the slot in which the prob falls
       ie cum_dist[row][slot-1] < uniform_prob < cum_distr[row][slot] */

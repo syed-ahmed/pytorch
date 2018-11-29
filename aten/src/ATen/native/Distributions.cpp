@@ -14,6 +14,8 @@
 #include <functional>
 #include <assert.h>
 #include <cpuinfo.h>
+#include <chrono>
+#include <iostream>
 
 #include "TH/THMath.h"
 
@@ -51,7 +53,7 @@ namespace {
 
 
 int64_t sample_poisson(double lambda, at::Generator* generator) {
-  std::uniform_real_distribution<double> standard_uniform(0.0, 1.0);
+  static std::uniform_real_distribution<double> standard_uniform(0.0, 1.0);
   auto& cpu_engine = generator->getCPUEngine();
   if (lambda >= 10) {
     // transformed rejection method, (Hoermann, 1993)
@@ -123,6 +125,7 @@ Tensor& bernoulli_out(Tensor& result, const Tensor& self, Generator* gen) {
 }
 
 Tensor& bernoulli_tensor_cpu_(Tensor& self, const Tensor& p_, Generator* gen) {
+  auto t1 = std::chrono::high_resolution_clock::now();
   AT_DISPATCH_ALL_TYPES(self.type(), "bernoulli_tensor_cpu_self_", [&] {
     Generator* generator = detail::checkGeneratorWithDefault(gen, &detail::getDefaultGenerator(kCPU));
     auto& cpu_engine = generator->getCPUEngine();
@@ -131,7 +134,7 @@ Tensor& bernoulli_tensor_cpu_(Tensor& self, const Tensor& p_, Generator* gen) {
       auto p = std::get<0>(expand_inplace(self, p_.to(kCPU)));
       CPU_tensor_apply2<self_t, double>(
         self, p, [&cpu_engine](self_t& ret_val, double& p_val) {
-          std::bernoulli_distribution bernoulli(p_val);
+          static std::bernoulli_distribution bernoulli(p_val);
           ret_val = static_cast<self_t>(bernoulli(cpu_engine));
         });
     } else {
@@ -140,12 +143,14 @@ Tensor& bernoulli_tensor_cpu_(Tensor& self, const Tensor& p_, Generator* gen) {
         using p_t = scalar_t;
         CPU_tensor_apply2<self_t, p_t>(
           self, p, [&cpu_engine](self_t& ret_val, p_t& p_val) {
-            std::bernoulli_distribution bernoulli(p_val);
+            static std::bernoulli_distribution bernoulli(p_val);
             ret_val = static_cast<self_t>(bernoulli(cpu_engine));
           });
       });
     }
   });
+  auto t2 = std::chrono::high_resolution_clock::now();
+  std::cout << "Bernoulli took " << std::chrono::duration_cast<std::chrono::microseconds>(t2-t1).count() << std::endl;
   return self;
 }
 
@@ -164,7 +169,7 @@ Tensor& bernoulli_scalar_cpu_(Tensor& self, double p, Generator* gen) {
     auto& cpu_engine = generator->getCPUEngine();
     CPU_tensor_apply1<scalar_t>(
         self, [&cpu_engine, p](scalar_t& ret_val) {
-          std::bernoulli_distribution bernoulli(p);
+          static std::bernoulli_distribution bernoulli(p);
           ret_val = static_cast<scalar_t>(bernoulli(cpu_engine));
         });
   });
@@ -209,11 +214,11 @@ Tensor _s_gamma_cpu(const Tensor& alpha, Generator *gen) {
     CPU_tensor_apply2<scalar_t, scalar_t>(ret, alpha,
       [&cpu_engine](scalar_t& ret_val, const scalar_t& alpha){
         BaseSampler<double> standard_uniform([&cpu_engine] () {
-          std::uniform_real_distribution<double> standard_uniform(0.0, 1.0);
+          static std::uniform_real_distribution<double> standard_uniform(0.0, 1.0);
           return standard_uniform(cpu_engine);
         });
         BaseSampler<double> standard_normal([&cpu_engine] () {
-          std::normal_distribution<double> normal{0.0, 1.0};
+          static std::normal_distribution<double> normal{0.0, 1.0};
           return normal(cpu_engine);
         });
         auto sample = sample_gamma<scalar_t, double>(alpha, standard_uniform, standard_normal);
