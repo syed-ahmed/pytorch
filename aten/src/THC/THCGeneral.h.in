@@ -48,12 +48,6 @@
   } while(0)
 #endif
 
-#ifdef __cplusplus
-typedef at::cuda::impl::CUDAStreamInternals THCStream;
-#else
-typdef struct at_cuda_impl_CUDAStreamInternals at_cuda_impl_CUDAStreamInternals;
-typedef at_cuda_impl_CUDAStreamInternals THCStream;
-#endif
 typedef struct THCState THCState;
 struct THCState;
 

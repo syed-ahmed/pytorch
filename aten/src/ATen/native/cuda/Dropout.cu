@@ -12,8 +12,6 @@ namespace native{
 
 namespace {
 
-const int UNROLL = 4;
-
 template <
           typename scalar_t,
           typename accscalar_t,
@@ -32,35 +30,28 @@ fused_dropout_kernel(cuda::detail::TensorInfo<scalar_t, IndexType> a,
   accscalar_t pinv = accscalar_t(1)/p;
   IndexType idx = blockIdx.x * blockDim.x + threadIdx.x;
   at::cuda::Philox4_32_10 engine(seeds.first, idx, seeds.second);
-  IndexType rounded_size = ((totalElements - 1)/(blockDim.x * gridDim.x * UNROLL)+1) * 
-        blockDim.x * gridDim.x * UNROLL;
+  IndexType rounded_size = ((totalElements - 1)/(blockDim.x * gridDim.x)+1) * 
+        blockDim.x * gridDim.x;
   for (IndexType linearIndex = idx;
        linearIndex < rounded_size;
-       linearIndex += gridDim.x * blockDim.x*UNROLL) {
-       scalar_t src[UNROLL];
-       for (int ii = 0; ii < UNROLL; ii++) {
-           IndexType li = linearIndex + blockDim.x * gridDim.x * ii;
-           if (li < totalElements) {
+       linearIndex += gridDim.x * blockDim.x) {
+       scalar_t src;
+        if (linearIndex < totalElements) {
     // Convert `linearIndex` into an offset of `a`
                const IndexType aOffset =
-                   cuda::detail::IndexToOffset<scalar_t, IndexType, ADims>::get(li, a);
-               src[ii] = a.data[aOffset];
-           }
-       }
-       for (int ii = 0; ii < UNROLL; ii++) {
-           IndexType li = linearIndex + blockDim.x * gridDim.x * ii;
-           if (li < totalElements) {
+                   cuda::detail::IndexToOffset<scalar_t, IndexType, ADims>::get(linearIndex, a);
+               src = a.data[aOffset];
                float randn = at::cuda::standard_uniform_distribution(engine);
                randn = randn < p;
     // Convert `linearIndex` into an offset of `b`
                const IndexType bOffset =
-                   cuda::detail::IndexToOffset<scalar_t, IndexType, 1>::get(li, b);
-               b.data[bOffset] = src[ii]*randn*pinv;
+                   cuda::detail::IndexToOffset<scalar_t, IndexType, 1>::get(linearIndex, b);
+               b.data[bOffset] = src*randn*pinv;
                c.data[bOffset] = (uint8_t)randn;
-           }
-       }
-       __syncthreads();
-  }
+        }
+        __syncthreads();
+    }
+    
 }
 
 template<typename scalar_t, typename accscalar_t>
@@ -100,7 +91,7 @@ fused_dropout_cuda(const Tensor& self, double p, Generator * gen){
                 mask_info, 
                 nelem, 
                 pa, 
-                gen_->incrementPhiloxOffset(nelem, grid.x, block_size, 4)); /* Loop unrolling 4 and engine call 1*/
+                gen_->incrementPhiloxOffset(nelem, grid.x, block_size, 1)); /* Loop unrolling 0 and engine call 1*/
             break;
         default:
             fused_dropout_kernel<scalar_t, accscalar_t, unsigned int, -1><<<grid, dim_block, 0, at::cuda::getCurrentCUDAStream()>>>(
@@ -109,7 +100,7 @@ fused_dropout_cuda(const Tensor& self, double p, Generator * gen){
                 mask_info, 
                 nelem, 
                 pa, 
-                gen_->incrementPhiloxOffset(nelem, grid.x, block_size, 4));
+                gen_->incrementPhiloxOffset(nelem, grid.x, block_size, 1));
       }
    });
   } else {

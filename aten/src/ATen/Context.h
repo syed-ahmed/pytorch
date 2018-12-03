@@ -83,8 +83,8 @@ class CAFFE2_API Context {
   THHState* lazyInitHIP() {
     std::call_once(thh_init,[&] {
       thh_state = detail::getHIPHooks().initHIP();
-      generator_registry[static_cast<int>(DeviceType::HIP)] =
-        detail::getHIPHooks().initHIPGenerator(this);
+      // generator_registry[static_cast<int>(DeviceType::HIP)] =
+      //   detail::getHIPHooks().initHIPGenerator(this);
       detail::getHIPHooks().registerHIPTypes(this);
     });
     return thh_state.get();
