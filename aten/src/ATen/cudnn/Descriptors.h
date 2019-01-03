@@ -155,6 +155,9 @@ struct AT_CUDA_API ConvolutionDescriptor
     AT_CUDNN_CHECK(cudnnSetConvolutionNdDescriptor(mut_desc(), dim, pad, stride, upscale,
                                           CUDNN_CROSS_CORRELATION, mathType));
     AT_CUDNN_CHECK(cudnnSetConvolutionGroupCount(mut_desc(), groups));
+    // Note that we are asumming the cdesc->mathType to be the same as the dataType
+    // by default. You will be using these default paths if torch.backends.cudnn.benchmark = False
+    // and torch.backends.cudnn.deterministic = True.
     AT_CUDNN_CHECK(cudnnSetConvolutionMathType(mut_desc(), CUDNN_DEFAULT_MATH));
     if(dataType == CUDNN_DATA_HALF)
       AT_CUDNN_CHECK(cudnnSetConvolutionMathType(mut_desc(), CUDNN_TENSOR_OP_MATH));
