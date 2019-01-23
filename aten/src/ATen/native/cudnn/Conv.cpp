@@ -94,12 +94,11 @@ std::tuple<at::Tensor,at::Tensor,at::Tensor> cudnn_convolution_transpose_backwar
 #include <stdint.h>
 #include <unordered_map>
 
-// Note [chooseAlgorithm doesn't respect mathType]
-// You might be wondering, why are we calling cudnnSetConvolutionMathType after
-// calling chooseAlgorithm...
-// Turns out, the mathType returned by the chooseAlgorithm can be different 
+// Note [findAlgorithm doesn't respect mathType]
+// Turns out, the mathType returned by the findAlgorithm can be different 
 // from what we set in the descriptor and hence, we have to explicitly update it 
-// after the chooseAlgorithm has found the best pair of algorithm+mathType. 
+// after the findAlgorithm has found the best pair of algorithm+mathType, only
+// when doing cudnnGet*_v7 or cudnnFind*_Ex.
 // Otherwise, even though we'll be calling cudnnConvolutionForward with the 
 // fastest algorithm, under the hood, cudnn will run it with the slower kernel 
 // since it sees fastest algorithm combination with a sub optimal mathType.
@@ -444,21 +443,30 @@ size_t getMaxWorkspaceSize(
 }
 
 template<typename perf_t>
-perf_t getBestAlgorithm(perf_t *perfResults, bool deterministic, int n_algo) {
-  if (deterministic) {
+perf_t getBestAlgorithm(perf_t *perfResults, const ConvolutionArgs& args, int n_algo) {
+  int best_algo_idx;
+  if (args.params.deterministic) {
     // iterate over perf results of all algorithms and find the best deterministic algo
     for (int i = 0; i < n_algo; i++) {
       // TODO: Shouldn't all returned results be successful?
       // Double check documentation for cudnnFindConvolutionForwardAlgorithmEx
       if (perfResults[i].status == CUDNN_STATUS_SUCCESS &&
           perfResults[i].determinism == CUDNN_DETERMINISTIC) {
-        return perfResults[i];
+        best_algo_idx = i;
       }
     }
     AT_ERROR("no deterministic convolution algorithms available in CuDNN");
   } else {
-    return perfResults[0];
+    best_algo_idx = 0;
   }
+  // BUG!! NOT getting algo1+mathType0 when calling cudnnSetConvolutionMathType in cdesc setter
+  printf("Algo: %d\n", perfResults[best_algo_idx].algo); 
+  printf("Algo MathType: %d\n", perfResults[best_algo_idx].mathType);
+  // update convDesc mathType since cudnn now requires both algo + mathType to figure out
+  // whether to use Tensor cores or not
+  // See Note [findAlgorithm doesn't respect mathType]
+  AT_CUDNN_CHECK(cudnnSetConvolutionMathType(args.cdesc.desc(), perfResults[best_algo_idx].mathType));
+  return perfResults[best_algo_idx];
 }
 
 template<>
@@ -510,7 +518,7 @@ struct algorithm_search<cudnnConvolutionFwdAlgoPerf_t> {
           ws.data,
           ws.size));
     }
-    return getBestAlgorithm<perf_t>(perf_results.get(), args.params.deterministic, perf_count);
+    return getBestAlgorithm<perf_t>(perf_results.get(), args, perf_count);
   }
 
   static void getWorkspaceSize(
@@ -575,7 +583,7 @@ struct algorithm_search<cudnnConvolutionBwdDataAlgoPerf_t> {
           ws.data,
           ws.size));
     }
-    return getBestAlgorithm<perf_t>(perf_results.get(), args.params.deterministic, perf_count);
+    return getBestAlgorithm<perf_t>(perf_results.get(), args, perf_count);
   }
 
   static void getWorkspaceSize(
@@ -642,7 +650,7 @@ struct algorithm_search<cudnnConvolutionBwdFilterAlgoPerf_t> {
           ws.data,
           ws.size));
     }
-    return getBestAlgorithm<perf_t>(perf_results.get(), args.params.deterministic, perf_count);
+    return getBestAlgorithm<perf_t>(perf_results.get(), args, perf_count);
   }
 
   static void getWorkspaceSize(const ConvolutionArgs& args, algo_t algo, size_t* workspaceSize)
@@ -811,7 +819,7 @@ void raw_cudnn_convolution_forward_out(
   args.idesc.set(input);
   args.wdesc.set(weight);
   args.odesc.set(output);
-  args.cdesc.set(dataType, input.dim() - 2, args.params.padding, args.params.stride, args.params.dilation, args.params.groups, &(fwdAlgPerf.mathType));
+  args.cdesc.set(dataType, input.dim() - 2, args.params.padding, args.params.stride, args.params.dilation, args.params.groups);
 
   // TODO: when we do legacy group convolution support, we'll repeatedly
   // reinitialize the workspace for each convolution we do.  This is
@@ -819,11 +827,6 @@ void raw_cudnn_convolution_forward_out(
   // convolution support is already pretty slow, so this might not
   // matter.  (This applies to raw_cudnn_convolution_backward_input as well.)
   Workspace workspace = chooseAlgorithm(dataType, args, benchmark, &fwdAlgPerf);
-
-  // update convDesc mathType since cudnn now requires both algo + mathType to figure out
-  // whether to use Tensor cores or not
-  // See Note [chooseAlgorithm doesn't respect mathType]
-  AT_CUDNN_CHECK(cudnnSetConvolutionMathType(args.cdesc.mut_desc(), fwdAlgPerf.mathType));
 
   Constant one(dataType, 1);
   Constant zero(dataType, 0);
@@ -940,14 +943,9 @@ void raw_cudnn_convolution_backward_input_out(
   args.idesc.set(grad_input);
   args.wdesc.set(weight);
   args.odesc.set(grad_output);
-  args.cdesc.set(dataType, grad_output.dim() - 2, args.params.padding, args.params.stride, args.params.dilation, args.params.groups, &(bwdDataAlgPerf.mathType));
+  args.cdesc.set(dataType, grad_output.dim() - 2, args.params.padding, args.params.stride, args.params.dilation, args.params.groups);
 
   Workspace workspace = chooseAlgorithm(dataType, args, benchmark, &bwdDataAlgPerf);
-
-  // update convDesc mathType since cudnn now requires both algo + mathType to figure out
-  // whether to use Tensor cores or not
-  // See Note [chooseAlgorithm doesn't respect mathType]
-  AT_CUDNN_CHECK(cudnnSetConvolutionMathType(args.cdesc.mut_desc(), bwdDataAlgPerf.mathType));
 
   Constant one(dataType, 1);
   Constant zero(dataType, 0);
@@ -1081,14 +1079,9 @@ void raw_cudnn_convolution_backward_weight_out(
   args.idesc.set(input);
   args.wdesc.set(grad_weight);
   args.odesc.set(grad_output);
-  args.cdesc.set(dataType, input.dim() - 2, args.params.padding, args.params.stride, args.params.dilation, args.params.groups, &(bwdFilterAlgPerf.mathType));
+  args.cdesc.set(dataType, input.dim() - 2, args.params.padding, args.params.stride, args.params.dilation, args.params.groups);
 
   Workspace workspace = chooseAlgorithm(dataType, args, benchmark, &bwdFilterAlgPerf);
-
-  // update convDesc mathType since cudnn now requires both algo + mathType to figure out
-  // whether to use Tensor cores or not
-  // See Note [chooseAlgorithm doesn't respect mathType]
-  AT_CUDNN_CHECK(cudnnSetConvolutionMathType(args.cdesc.mut_desc(), bwdFilterAlgPerf.mathType));
 
   Constant one(dataType, 1);
   Constant zero(dataType, 0);
