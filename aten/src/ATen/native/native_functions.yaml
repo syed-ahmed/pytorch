@@ -2886,30 +2886,57 @@
 
 - func: random_(Tensor(a!) self, int from, int to, *, Generator? generator=None) -> Tensor(a!)
   variants: method
+  dispatch:
+    CPU: clamped_random_tensor_cpu_
+    CUDA: clamped_random_tensor_cuda_
 
 - func: random_(Tensor(a!) self, int to, *, Generator? generator=None) -> Tensor(a!)
   variants: method
+  dispatch:
+    CPU: capped_random_tensor_cpu_
+    CUDA: capped_random_tensor_cuda_
 
 - func: random_(Tensor(a!) self, *, Generator? generator=None) -> Tensor(a!)
   variants: method
+  dispatch:
+    CPU: random_tensor_cpu_
+    CUDA: random_tensor_cuda_
 
 - func: uniform_(Tensor(a!) self, float from=0, float to=1, *, Generator? generator=None) -> Tensor(a!)
   variants: method
+  dispatch:
+    CPU: uniform_tensor_cpu_
+    CUDA: uniform_tensor_cuda_
 
 - func: normal_(Tensor(a!) self, float mean=0, float std=1, *, Generator? generator=None) -> Tensor(a!)
   variants: method
+  dispatch:
+    CPU: normal_tensor_cpu_
+    CUDA: normal_tensor_cuda_
 
 - func: cauchy_(Tensor(a!) self, float median=0, float sigma=1, *, Generator? generator=None) -> Tensor(a!)
   variants: method
+  dispatch:
+    CPU: cauchy_tensor_cpu_
+    CUDA: cauchy_tensor_cuda_
 
 - func: log_normal_(Tensor(a!) self, float mean=1, float std=2, *, Generator? generator=None) -> Tensor(a!)
   variants: method
+  dispatch:
+    CPU: log_normal_tensor_cpu_
+    CUDA: log_normal_tensor_cuda_
 
 - func: exponential_(Tensor(a!) self, float lambd=1, *, Generator? generator=None) -> Tensor(a!)
   variants: method
+  dispatch:
+    CPU: exponential_tensor_cpu_
+    CUDA: exponential_tensor_cuda_
 
 - func: geometric_(Tensor(a!) self, float p, *, Generator? generator=None) -> Tensor(a!)
   variants: method
+  dispatch:
+    CPU: geometric_tensor_cpu_
+    CUDA: geometric_tensor_cuda_
 
 # wrappers for TH functions
 

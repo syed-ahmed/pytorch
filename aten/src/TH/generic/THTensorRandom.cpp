@@ -129,6 +129,12 @@ void THTensor_(logNormal)(THTensor *self, THGenerator *_generator, double mean, 
   TH_TENSOR_APPLY(scalar_t, self, *self_data = (scalar_t)THRandom_logNormal(_generator, mean, stdv););
 }
 
+void THTensor_(geometric)(THTensor *self, THGenerator *_generator, double p)
+{
+  std::lock_guard<std::mutex> lock(_generator->mutex);
+  TH_TENSOR_APPLY(scalar_t, self, *self_data = (scalar_t)THRandom_geometric(_generator, p););
+}
+
 void THTensor_(multinomialAliasSetup)(THTensor *probs, THLongTensor *J, THTensor *q)
 {
   int64_t inputsize = THTensor_(nElement)(probs);

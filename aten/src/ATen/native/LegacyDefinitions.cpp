@@ -214,39 +214,39 @@ Tensor & addcdiv_(Tensor& self, const Tensor & tensor1, const Tensor & tensor2, 
   return at::legacy::th::_th_addcdiv_(self, tensor1, tensor2, value);
 }
 
-Tensor & random_(Tensor& self, int64_t from, int64_t to, Generator * generator) {
+Tensor & clamped_random_tensor_cpu_(Tensor& self, int64_t from, int64_t to, Generator * generator) {
   return at::legacy::th::_th_random_(self, from, to, generator);
 }
 
-Tensor & random_(Tensor& self, int64_t to, Generator * generator) {
+Tensor & capped_random_tensor_cpu_(Tensor& self, int64_t to, Generator * generator) {
   return at::legacy::th::_th_random_(self, to, generator);
 }
 
-Tensor & random_(Tensor& self, Generator * generator) {
+Tensor & random_tensor_cpu_(Tensor& self, Generator * generator) {
   return at::legacy::th::_th_random_(self, generator);
 }
 
-Tensor & uniform_(Tensor& self, double from, double to, Generator * generator) {
+Tensor & uniform_tensor_cpu_(Tensor& self, double from, double to, Generator * generator) {
   return at::legacy::th::_th_uniform_(self, from, to, generator);
 }
 
-Tensor & normal_(Tensor& self, double mean, double std, Generator * generator) {
+Tensor & normal_tensor_cpu_(Tensor& self, double mean, double std, Generator * generator) {
   return at::legacy::th::_th_normal_(self, mean, std, generator);
 }
 
-Tensor & cauchy_(Tensor& self, double median, double sigma, Generator * generator) {
+Tensor & cauchy_tensor_cpu_(Tensor& self, double median, double sigma, Generator * generator) {
   return at::legacy::th::_th_cauchy_(self, median, sigma, generator);
 }
 
-Tensor & log_normal_(Tensor& self, double mean, double std, Generator * generator) {
+Tensor & log_normal_tensor_cpu_(Tensor& self, double mean, double std, Generator * generator) {
   return at::legacy::th::_th_log_normal_(self, mean, std, generator);
 }
 
-Tensor & exponential_(Tensor& self, double lambd, Generator * generator) {
+Tensor & exponential_tensor_cpu_(Tensor& self, double lambd, Generator * generator) {
   return at::legacy::th::_th_exponential_(self, lambd, generator);
 }
 
-Tensor & geometric_(Tensor& self, double p, Generator * generator) {
+Tensor & geometric_tensor_cpu_(Tensor& self, double p, Generator * generator) {
   return at::legacy::th::_th_geometric_(self, p, generator);
 }
 
