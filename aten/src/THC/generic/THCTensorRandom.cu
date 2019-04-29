@@ -6,34 +6,6 @@
 
 #if defined(THC_REAL_IS_FLOAT) || defined(THC_REAL_IS_DOUBLE) || defined(THC_REAL_IS_HALF)
 
-void THCTensor_(normal_means)(THCState *state, THCTensor *self, THCTensor *means, double stddev) {
-  THCTensor_(resizeAs)(state, self, means);
-  c10::raw::intrusive_ptr::incref(self);
-  auto out = at::Tensor(c10::intrusive_ptr<at::TensorImpl, at::UndefinedTensorImpl>::reclaim(self));
-  at::native::normal_tensor_cuda_(out, 0, stddev);
-  THCTensor_(cadd)(state, self, self, ScalarConvert<int, scalar_t>::to(1), means);
-}
-
-void THCTensor_(normal_stddevs)(THCState *state, THCTensor *self, double mean, THCTensor *stddevs)
-{
-  THCTensor_(resizeAs)(state, self, stddevs);
-  c10::raw::intrusive_ptr::incref(self);
-  auto out = at::Tensor(c10::intrusive_ptr<at::TensorImpl, at::UndefinedTensorImpl>::reclaim(self));
-  at::native::normal_tensor_cuda_(out, 0, 1);
-  THCTensor_(cmul)(state, self, self, stddevs);
-  THCTensor_(add)(state, self, self, ScalarConvert<double, scalar_t>::to(mean));
-}
-
-void THCTensor_(normal_means_stddevs)(THCState *state, THCTensor *self, THCTensor *means, THCTensor *stddevs)
-{
-  THCTensor_(resizeAs)(state, self, means);
-  c10::raw::intrusive_ptr::incref(self);
-  auto out = at::Tensor(c10::intrusive_ptr<at::TensorImpl, at::UndefinedTensorImpl>::reclaim(self));
-  at::native::normal_tensor_cuda_(out, 0, 1);
-  THCTensor_(cmul)(state, self, self, stddevs);
-  THCTensor_(cadd)(state, self, self, ScalarConvert<int, scalar_t>::to(1), means);
-}
-
 void THCTensor_(renormRows)(struct THCState* state,
                              THCTensor* t) {
   THAssert(THCTensor_(nDimensionLegacyAll)(state, t) == 2);

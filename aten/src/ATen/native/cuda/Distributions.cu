@@ -286,11 +286,12 @@ void uniform_tensor_cuda_kernel(
   );
 }
 
+// overloading normal_tensor_cuda_kernel for float mean, float std
 template<typename scalar_t>
 void normal_tensor_cuda_kernel(
     at::Tensor& ret,
-    float mean,
-    float std,
+    const float& mean,
+    const float& std,
     std::pair<uint64_t, uint64_t> seeds) {
   at::cuda::CUDA_tensor_apply1<scalar_t, UNROLL_FACTOR>(
     ret, [seeds, mean, std] __device__(
@@ -317,6 +318,135 @@ void normal_tensor_cuda_kernel(
         }
         case 1: {
           v1 = static_cast<scalar_t>(randn.x * std + mean);
+        }
+      }
+    }
+  );
+}
+
+// overloading normal_tensor_cuda_kernel for Tensor mean, float std
+template<typename scalar_t>
+void normal_tensor_cuda_kernel(
+    at::Tensor& ret,
+    const at::Tensor& mean,
+    const float& std,
+    std::pair<uint64_t, uint64_t> seeds) {
+  at::cuda::CUDA_tensor_apply2<scalar_t, float, UNROLL_FACTOR>(
+    ret, mean,
+    [seeds, std] __device__(
+        int n, scalar_t& v1, scalar_t& v2, scalar_t& v3, scalar_t& v4,
+        const float& m1, const float& m2, const float& m3, const float& m4) {
+      curandStatePhilox4_32_10_t state;
+      curand_init(
+          seeds.first,
+          blockIdx.x * blockDim.x + threadIdx.x,
+          seeds.second,
+          &state);
+      float4 randn = curand_uniform4(&state);
+      switch (n) {
+        case 4: {
+          v4 = static_cast<scalar_t>(randn.w * std + m4);
+          // fallthrough
+        }
+        case 3: {
+          v3 = static_cast<scalar_t>(randn.z * std + m3);
+          // fallthrough
+        }
+        case 2: {
+          v2 = static_cast<scalar_t>(randn.y * std + m2);
+          // fallthrough
+        }
+        case 1: {
+          v1 = static_cast<scalar_t>(randn.x * std + m1);
+        }
+      }
+    }
+  );
+}
+
+// overloading normal_tensor_cuda_kernel for float mean, Tensor std
+template<typename scalar_t>
+void normal_tensor_cuda_kernel(
+    at::Tensor& ret,
+    const float& mean,
+    const at::Tensor& std,
+    std::pair<uint64_t, uint64_t> seeds) {
+  at::cuda::CUDA_tensor_apply2<scalar_t, float, UNROLL_FACTOR>(
+    ret, std,
+    [seeds, mean] __device__(
+        int n, scalar_t& v1, scalar_t& v2, scalar_t& v3, scalar_t& v4,
+        const float& s1, const float& s2, const float& s3, const float& s4) {
+      curandStatePhilox4_32_10_t state;
+      curand_init(
+          seeds.first,
+          blockIdx.x * blockDim.x + threadIdx.x,
+          seeds.second,
+          &state);
+      float4 randn = curand_uniform4(&state);
+      switch (n) {
+        case 4: {
+          assert(s4 > 0.0f);
+          v4 = static_cast<scalar_t>(randn.w * s4 + mean);
+          // fallthrough
+        }
+        case 3: {
+          assert(s3 > 0.0f);
+          v3 = static_cast<scalar_t>(randn.z * s3 + mean);
+          // fallthrough
+        }
+        case 2: {
+          assert(s2 > 0.0f);
+          v2 = static_cast<scalar_t>(randn.y * s2 + mean);
+          // fallthrough
+        }
+        case 1: {
+          assert(s1 > 0.0f);
+          v1 = static_cast<scalar_t>(randn.x * s1 + mean);
+        } 
+      }
+    }
+  );
+}
+
+// overloading normal_tensor_cuda_kernel for Tensor mean, Tensor std
+template<typename scalar_t>
+void normal_tensor_cuda_kernel(
+    at::Tensor& ret,
+    const at::Tensor& mean,
+    const at::Tensor& std,
+    std::pair<uint64_t, uint64_t> seeds) {
+  at::cuda::CUDA_tensor_apply3<scalar_t, float, float, UNROLL_FACTOR>(
+    ret, mean, std,
+    [seeds] __device__(
+        int n, scalar_t& v1, scalar_t& v2, scalar_t& v3, scalar_t& v4,
+        const float& m1, const float& m2, const float& m3, const float& m4,
+        const float& s1, const float& s2, const float& s3, const float& s4) {
+      curandStatePhilox4_32_10_t state;
+      curand_init(
+          seeds.first,
+          blockIdx.x * blockDim.x + threadIdx.x,
+          seeds.second,
+          &state);
+      float4 randn = curand_uniform4(&state);
+      switch (n) {
+        case 4: {
+          assert(s4 > 0.0f);
+          v4 = static_cast<scalar_t>(randn.w * s4 + m4);
+          // fallthrough
+        }
+        case 3: {
+          assert(s3 > 0.0f);
+          v3 = static_cast<scalar_t>(randn.z * s3 + m3);
+          // fallthrough
+        }
+        case 2: {
+          assert(s2 > 0.0f);
+          v2 = static_cast<scalar_t>(randn.y * s2 + m2);
+          // fallthrough
+        }
+        case 1: {
+          assert(s1 > 0.0f);
+          v1 = static_cast<scalar_t>(randn.x * s1 + m1);
         }
       }
     }
@@ -613,25 +743,6 @@ Tensor& uniform_tensor_cuda_(Tensor& self, double from_, double to_, Generator* 
   return self;
 }
 
-Tensor& normal_tensor_cuda_(Tensor& self, double mean_, double std_, Generator* gen) {
-  // static_cast everything to float since we are using curand_normal4
-  float mean = static_cast<float>(mean_);
-  float std = static_cast<float>(std_);
-  AT_CHECK(std > 0.0f, "normal_ expects std > 0.0f, but found std=", std);
-  uint64_t total_elements = self.numel();
-  uint64_t grid_size = calc_grid_size_cuda_apply_utils_n(UNROLL_FACTOR, total_elements);
-  uint64_t counter_offset = calc_philox_increment(total_elements,
-                                                  grid_size,
-                                                  cuda::AT_APPLY_THREADS_PER_BLOCK,
-                                                  UNROLL_FACTOR,
-                                                  CURAND4_ENGINE_CALLS);
-  auto seeds = next_philox_seed(gen, counter_offset);
-  AT_DISPATCH_ALL_TYPES_AND(at::ScalarType::Half, self.scalar_type(), "normal_tensor_cuda_", [&] {
-    normal_tensor_cuda_kernel<scalar_t>(self, mean, std, seeds);
-   });
-  return self;
-}
-
 Tensor& cauchy_tensor_cuda_(Tensor& self, double median_, double sigma_, Generator* gen) {
   // static_cast everything to float since we are using curand_normal4
   float median = static_cast<float>(median_);
@@ -771,6 +882,103 @@ Tensor& clamped_random_tensor_cuda_(Tensor& self, int64_t from, int64_t to, Gene
 
 Tensor& capped_random_tensor_cuda_(Tensor& self, int64_t to, Generator* gen) {
   return clamped_random_tensor_cuda_(self, 0, to, gen);
+}
+
+Tensor& normal_tensor_cuda_(Tensor& self, double mean_, double std_, Generator* gen) {
+  // static_cast everything to float since we are using curand_normal4
+  float mean = static_cast<float>(mean_);
+  float std = static_cast<float>(std_);
+  AT_CHECK(std > 0.0f, "normal_ expects std > 0.0f, but found std=", std);
+  uint64_t total_elements = self.numel();
+  uint64_t grid_size = calc_grid_size_cuda_apply_utils_n(UNROLL_FACTOR, total_elements);
+  uint64_t counter_offset = calc_philox_increment(total_elements,
+                                                  grid_size,
+                                                  cuda::AT_APPLY_THREADS_PER_BLOCK,
+                                                  UNROLL_FACTOR,
+                                                  CURAND4_ENGINE_CALLS);
+  auto seeds = next_philox_seed(gen, counter_offset);
+  AT_DISPATCH_ALL_TYPES_AND(at::ScalarType::Half, self.scalar_type(), "normal_tensor_cuda_", [&] {
+    normal_tensor_cuda_kernel<scalar_t>(self, mean, std, seeds);
+   });
+  return self;
+}
+
+Tensor& normal_out_cuda_(Tensor& output, const Tensor& mean_, double std_, Generator* gen) {
+  auto mean = std::get<0>(expand_inplace(output, mean_.to(kCUDA)));
+  // static_cast everything to float since we are using curand_normal4
+  float std = static_cast<float>(std_);
+  AT_CHECK(std > 0.0f, "normal_out expects std > 0.0f, but found std=", std);
+  uint64_t total_elements = output.numel();
+  uint64_t grid_size = calc_grid_size_cuda_apply_utils_n(UNROLL_FACTOR, total_elements);
+  uint64_t counter_offset = calc_philox_increment(total_elements,
+                                                  grid_size,
+                                                  cuda::AT_APPLY_THREADS_PER_BLOCK,
+                                                  UNROLL_FACTOR,
+                                                  CURAND4_ENGINE_CALLS);
+  auto seeds = next_philox_seed(gen, counter_offset);
+  AT_DISPATCH_ALL_TYPES_AND(
+    at::ScalarType::Half, output.scalar_type(), "normal_out_cuda_", [&] {
+      normal_tensor_cuda_kernel<scalar_t>(output, mean, std, seeds);
+   });
+  return output;
+}
+
+Tensor& normal_out_cuda_(Tensor& output, double mean_, const Tensor& std_, Generator* gen) {
+  auto std = std::get<0>(expand_inplace(output, std_.to(kCUDA)));
+  // static_cast everything to float since we are using curand_normal4
+  float mean = static_cast<float>(mean_);
+  uint64_t total_elements = output.numel();
+  uint64_t grid_size = calc_grid_size_cuda_apply_utils_n(UNROLL_FACTOR, total_elements);
+  uint64_t counter_offset = calc_philox_increment(total_elements,
+                                                  grid_size,
+                                                  cuda::AT_APPLY_THREADS_PER_BLOCK,
+                                                  UNROLL_FACTOR,
+                                                  CURAND4_ENGINE_CALLS);
+  auto seeds = next_philox_seed(gen, counter_offset);
+  AT_DISPATCH_ALL_TYPES_AND(
+    at::ScalarType::Half, output.scalar_type(), "normal_out_cuda_", [&] {
+      normal_tensor_cuda_kernel<scalar_t>(output, mean, std, seeds);
+   });
+  return output;
+}
+
+Tensor& normal_out_cuda_(Tensor& output, const Tensor& mean_, const Tensor& std_, Generator* gen) {
+  auto std = std::get<0>(expand_inplace(output, std_.to(kCUDA)));
+  auto mean = std::get<0>(expand_inplace(output, mean_.to(kCUDA)));
+  uint64_t total_elements = output.numel();
+  uint64_t grid_size = calc_grid_size_cuda_apply_utils_n(UNROLL_FACTOR, total_elements);
+  uint64_t counter_offset = calc_philox_increment(total_elements,
+                                                  grid_size,
+                                                  cuda::AT_APPLY_THREADS_PER_BLOCK,
+                                                  UNROLL_FACTOR,
+                                                  CURAND4_ENGINE_CALLS);
+  auto seeds = next_philox_seed(gen, counter_offset);
+  AT_DISPATCH_ALL_TYPES_AND(
+    at::ScalarType::Half, output.scalar_type(), "normal_out_cuda_", [&] {
+      normal_tensor_cuda_kernel<scalar_t>(output, mean, std, seeds);
+   });
+  return output; 
+}
+
+Tensor normal_cuda_(const Tensor& mean_, double std_, Generator* gen) {
+  Tensor ret = at::empty(mean_.sizes(), mean_.options());
+  normal_out_cuda_(ret, mean_, std_, gen);
+  return ret;
+}
+
+Tensor normal_cuda_(double mean_, const Tensor& std_, Generator* gen) {
+  Tensor ret = at::empty(std_.sizes(), std_.options());
+  normal_out_cuda_(ret, mean_, std_, gen);
+  return ret;
+}
+
+Tensor normal_cuda_(const Tensor& mean_, const Tensor& std_, Generator* gen) {
+  AT_CHECK(mean_.sizes().equals(std_.sizes()),
+           "normal expects 'mean' tensor to be the same size as 'std' tensor but got ",
+           "mean tensor size=", mean_.sizes(), " and std tensor size=", std_.sizes());
+  Tensor ret = at::empty(mean_.sizes(), mean_.options());
+  normal_out_cuda_(ret, mean_, std_, gen);
+  return ret;
 }
 
 }} // namespace at::native

@@ -2604,7 +2604,6 @@
     - floating_point
   backends:
     - CPU
-    - CUDA
   return: argument 0
   variants:
     - function
