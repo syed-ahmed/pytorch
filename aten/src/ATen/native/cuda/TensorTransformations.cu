@@ -12,12 +12,9 @@
 namespace at {
 namespace native {
 
-constexpr uint32_t AT_APPLY_THREADS_PER_BLOCK = 512;
-constexpr uint32_t AT_APPLY_BLOCKS_PER_SM = 4;
-
 template <typename scalar_t, typename IndexType>
 #if __CUDA_ARCH__ >= 350 || defined __HIP_PLATFORM_HCC__
-C10_LAUNCH_BOUNDS_2(AT_APPLY_THREADS_PER_BLOCK, AT_APPLY_BLOCKS_PER_SM)
+C10_LAUNCH_BOUNDS_2(cuda::AT_APPLY_THREADS_PER_BLOCK, cuda::AT_APPLY_BLOCKS_PER_SM)
 #endif
 __global__ void
 kernel_pointwise_flip_apply2(const cuda::detail::TensorInfo<scalar_t, IndexType> in_tensor_info,

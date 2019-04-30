@@ -23,16 +23,43 @@
 #include <utility>
 #include <type_traits>
 
+/**
+ * Note [Register spilling in curand call for CUDA < 10]
+ * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ * For CUDA < 10, curandStatePhilox4_32_10_t engine achieves poor performance (60% SOL bandwidth)
+ * when called to generate one random number at a time. This is because the line
+ *            unsigned ret = (&state->output.x)[state->STATE++];
+ * in
+ *            QUALIFIERS unsigned int curand(curandStatePhilox4_32_10_t *state)
+ * in curand_kernel.h dynamically indexes into state.output, preventing the compiler from ever
+ * storing state.output in registers.
+ *
+ * CUDA 10 fixed this problem. However, for backwards compatibility, in the following kernels
+ * we are using curand distributions that utilize curand4 call. curand4 call doesn't have the
+ * register spilling problem.
+ */
+ 
 THCGenerator* THCRandom_getGenerator(THCState* state);
 
 namespace {
-// increment should be at least the number of curand() random numbers used in
-// each thread.
+// Increment should be at least the number of curand() random numbers used in
+// each thread. It is the user's responsibility to make sure that the increment for philox is never
+// smaller than the number of curand() calls. Increment value > the number of curand() calls
+// won't harm but anything less would mean that you would be reusing random values from
+// previous threads. 
+// e.g. In many kernels below, we use distributions that utilize curand4 call in the kernel.
+//      Hence, increment value should be 4 for those kernels.
 std::pair<uint64_t, uint64_t> next_philox_seed(at::Generator* gen, uint64_t increment) {
   auto gen_ = THCRandom_getGenerator(at::globalContext().getTHCState());
   uint64_t offset = gen_->state.philox_seed_offset.fetch_add(increment);
   return std::make_pair(gen_->state.initial_seed, offset);
 }
+
+// step value used in the CUDA_tensor_apply* for several kernels below
+constexpr uint64_t UNROLL_FACTOR = 4;
+// number of curand calls made by distributions utilizing curand4.
+// this value is used in incrementing the philox offset.
+constexpr uint64_t CURAND4_ENGINE_OP_CALLS = 4;
 
 template <typename scalar_t>
 void poisson_cuda_kernel(
@@ -117,6 +144,7 @@ void bernoulli_tensor_cuda_kernel(
             blockIdx.x * blockDim.x + threadIdx.x,
             seeds.second,
             &state);
+        // See Note [Register spilling in curand call for CUDA < 10]
         float4 rand = curand_uniform4(&state);
         switch (n) {
           case 4: {
@@ -159,6 +187,7 @@ void bernoulli_scalar_cuda_kernel(
             blockIdx.x * blockDim.x + threadIdx.x,
             seeds.second,
             &state);
+        // See Note [Register spilling in curand call for CUDA < 10]
         float4 rand = curand_uniform4(&state);
         switch (n) {
           case 4: {
@@ -194,6 +223,69 @@ void dirichlet_scalar_cuda_kernel(
     ret_val = (min_value > ret_val) ? min_value : ret_val;
     ret_val = (max_value < ret_val) ? max_value : ret_val;
   });
+}
+
+template<typename scalar_t>
+void uniform_cuda_kernel(
+    at::Tensor& ret,
+    double from_,
+    double to,
+    std::pair<uint64_t, uint64_t> seeds) {
+  using accscalar_t = at::acc_type<scalar_t, true>;
+  at::cuda::CUDA_tensor_apply1<scalar_t, UNROLL_FACTOR>(
+    ret, [seeds, from_, to] __device__(
+      int n, scalar_t& v1, scalar_t& v2, scalar_t& v3, scalar_t& v4) {
+      curandStatePhilox4_32_10_t state;
+      curand_init(
+          seeds.first,
+          blockIdx.x * blockDim.x + threadIdx.x,
+          seeds.second,
+          &state);
+      auto range = static_cast<accscalar_t>(to-from_);
+      auto from = static_cast<accscalar_t>(from_);
+      // define lambda to reverse bounds, multiply 'range' and add 'from_'
+      auto uniform_func = [&] __device__ (accscalar_t rand) {
+        // reverse the bounds of curand4 from (0, 1] to [0, 1)
+        // Note that this method is from legacy THCTensorRandom and is likely to give
+        // you more 0-s, since, the probability of gettings 1-s is higher than 0-s and
+        // by reversing the bounds, we are fliping the probabilities of 1-s and 0-s.
+        auto reverse_bound_rand = rand == static_cast<accscalar_t>(1.0) ? static_cast<accscalar_t>(0.0) : rand;
+        return static_cast<scalar_t>(reverse_bound_rand * range + from);
+      };
+      // define lambda to assign values to output tensor elements
+      auto scalar_assign = [&] __device__ (accscalar_t x, accscalar_t y, accscalar_t z, accscalar_t w) {
+        switch (n) {
+          case 4: {
+            v4 = uniform_func(w);
+            // fallthrough
+          }
+          case 3: {
+            v3 = uniform_func(z);
+            // fallthrough
+          }
+          case 2: {
+            v2 = uniform_func(y);
+            // fallthrough
+          }
+          case 1: {
+            v1 = uniform_func(x);
+          }
+        }
+      };
+      if (std::is_same<scalar_t, double>::value) {
+        // See Note [Register spilling in curand call for CUDA < 10]
+        double2 rand1 = curand_uniform2_double(&state);
+        double2 rand2 = curand_uniform2_double(&state);
+        scalar_assign(static_cast<accscalar_t>(rand1.x), static_cast<accscalar_t>(rand1.y),
+                      static_cast<accscalar_t>(rand2.x), static_cast<accscalar_t>(rand2.y));
+      } else {
+        // See Note [Register spilling in curand call for CUDA < 10]
+        float4 rand = curand_uniform4(&state);
+        scalar_assign(static_cast<accscalar_t>(rand.x), static_cast<accscalar_t>(rand.y),
+                      static_cast<accscalar_t>(rand.z), static_cast<accscalar_t>(rand.w));
+      }
+    }
+  );
 }
 
 } // namespace
@@ -252,6 +344,30 @@ Tensor& bernoulli_scalar_cuda_(Tensor &self, double p, Generator* gen) {
   AT_DISPATCH_ALL_TYPES_AND(at::ScalarType::Half, self.scalar_type(), "bernoulli_scalar_cuda_", [&] {
     auto seeds = next_philox_seed(gen, 10);
     bernoulli_scalar_cuda_kernel<scalar_t>(self, p, seeds);
+   });
+  return self;
+}
+
+Tensor& uniform_cuda_(Tensor& self, double from, double to, Generator* gen) {
+  AT_CHECK(from <= to,
+           "uniform_ expects to return a [from, to) range, but found from=", from,
+           " > to=", to);
+  AT_CHECK((to - from) <= std::numeric_limits<double>::max(),
+           "uniform_ expects to-from ≤ std::numeric_limits<double>::max(), but found to=", to,
+           " and from=", from, " which result in to-from to exceed the limit");
+  uint64_t counter_offset;
+  if (self.scalar_type() == ScalarType::Double) {
+    // when double type, we'll call curand_uniform2_double twice in the kernel
+    // to get four double values to be utilized with the UNROLL_FACTOR of 4.
+    // one curand_uniform2_double call utilizes one curand4 call, and hence num_engine_calls
+    // is 4*2=8.
+    counter_offset = CURAND4_ENGINE_OP_CALLS * 2;
+  } else {
+    counter_offset = CURAND4_ENGINE_OP_CALLS;
+  }
+  auto seeds = next_philox_seed(gen, counter_offset);
+  AT_DISPATCH_FLOATING_TYPES_AND_HALF(self.scalar_type(), "uniform_cuda_", [&] {
+    uniform_cuda_kernel<scalar_t>(self, from, to, seeds);
    });
   return self;
 }
