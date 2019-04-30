@@ -46,7 +46,7 @@ namespace {
 // each thread. It is the user's responsibility to make sure that the increment for philox is never
 // smaller than the number of curand() calls. Increment value > the number of curand() calls
 // won't harm but anything less would mean that you would be reusing random values from
-// previous threads. 
+// previous calls. 
 // e.g. In many kernels below, we use distributions that utilize curand4 call in the kernel.
 //      Hence, increment value should be 4 for those kernels.
 std::pair<uint64_t, uint64_t> next_philox_seed(at::Generator* gen, uint64_t increment) {
@@ -59,7 +59,7 @@ std::pair<uint64_t, uint64_t> next_philox_seed(at::Generator* gen, uint64_t incr
 constexpr uint64_t UNROLL_FACTOR = 4;
 // number of curand calls made by distributions utilizing curand4.
 // this value is used in incrementing the philox offset.
-constexpr uint64_t CURAND4_ENGINE_OP_CALLS = 4;
+constexpr uint64_t CURAND4_ENGINE_OP_CALLS = UNROLL_FACTOR;
 
 template <typename scalar_t>
 void poisson_cuda_kernel(
@@ -228,8 +228,8 @@ void dirichlet_scalar_cuda_kernel(
 template<typename scalar_t>
 void uniform_cuda_kernel(
     at::Tensor& ret,
-    double from_,
-    double to,
+    scalar_t from_,
+    scalar_t to,
     std::pair<uint64_t, uint64_t> seeds) {
   using accscalar_t = at::acc_type<scalar_t, true>;
   at::cuda::CUDA_tensor_apply1<scalar_t, UNROLL_FACTOR>(
@@ -348,13 +348,7 @@ Tensor& bernoulli_scalar_cuda_(Tensor &self, double p, Generator* gen) {
   return self;
 }
 
-Tensor& uniform_cuda_(Tensor& self, double from, double to, Generator* gen) {
-  AT_CHECK(from <= to,
-           "uniform_ expects to return a [from, to) range, but found from=", from,
-           " > to=", to);
-  AT_CHECK((to - from) <= std::numeric_limits<double>::max(),
-           "uniform_ expects to-from ≤ std::numeric_limits<double>::max(), but found to=", to,
-           " and from=", from, " which result in to-from to exceed the limit");
+Tensor& uniform_cuda_(Tensor& self, double from_, double to_, Generator* gen) {
   uint64_t counter_offset;
   if (self.scalar_type() == ScalarType::Double) {
     // when double type, we'll call curand_uniform2_double twice in the kernel
@@ -367,6 +361,14 @@ Tensor& uniform_cuda_(Tensor& self, double from, double to, Generator* gen) {
   }
   auto seeds = next_philox_seed(gen, counter_offset);
   AT_DISPATCH_FLOATING_TYPES_AND_HALF(self.scalar_type(), "uniform_cuda_", [&] {
+    auto from = static_cast<scalar_t>(from_);
+    auto to = static_cast<scalar_t>(to_);
+    AT_CHECK(from <= to,
+      "uniform_ expects to return a [from, to) range, but found from=", from,
+      " > to=", to);
+    AT_CHECK((to - from) <= std::numeric_limits<scalar_t>::max(),
+          "uniform_ expects to-from ≤ std::numeric_limits<double>::max(), but found to=", to,
+          " and from=", from, " which result in to-from to exceed the limit");
     uniform_cuda_kernel<scalar_t>(self, from, to, seeds);
    });
   return self;
