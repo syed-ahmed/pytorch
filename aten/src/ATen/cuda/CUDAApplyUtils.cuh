@@ -92,11 +92,6 @@ namespace cuda {
 // TODO: combine with TensorArg?  So far that's been for debugging, and this is functional...
 enum class TensorArgType { ReadWrite, ReadOnly };
 
-// Threads per block for our apply kernel
-// FIXME: use occupancy calculator instead
-constexpr uint32_t AT_APPLY_THREADS_PER_BLOCK = 512;
-constexpr uint32_t AT_APPLY_BLOCKS_PER_SM = 4;
-
 namespace {
 
 // Rearrange dimensions for pointwise operations so that strides are in
@@ -201,6 +196,11 @@ inline void rearrangeDims(detail::TensorInfo<T1, IndexType>* aInfo,
     }
   }
 }
+
+// Threads per block for our apply kernel
+// FIXME: use occupancy calculator instead
+constexpr uint32_t AT_APPLY_THREADS_PER_BLOCK = 512;
+constexpr uint32_t AT_APPLY_BLOCKS_PER_SM = 4;
 
 // The `remaining_steps` argument is used to support Op that operates on
 // multiple elements at the same time. Generally, the strategy of ApplyOpN is to

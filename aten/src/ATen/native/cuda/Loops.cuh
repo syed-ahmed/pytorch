@@ -7,6 +7,8 @@
 #include <ATen/native/TensorIterator.h>
 #include <c10/macros/Macros.h>
 
+#include <type_traits>
+
 // Marks a lambda as executable on both the host and device. The __host__
 // attribute is important so that we can access static type information from
 // the host, even if the function is typically only executed on the device.
@@ -50,6 +52,18 @@ __global__ void elementwise_kernel(int N, func_t f) {
   }
 }
 
+// grid stride loop kernel
+template<int nt, typename func_t>
+C10_LAUNCH_BOUNDS_2(nt, launch_bound2)
+__global__ void elementwise_kernel(int N, func_t f) {
+  int idx = nt * blockIdx.x + threadIdx.x;
+  #pragma unroll
+  for(int linear_index = idx; linear_index < N; linear_index += blockDim.x * gridDim.x) {
+    f(linear_index);
+    __syncthreads();
+  }
+}
+
 template<int N>
 static OffsetCalculator<N> make_offset_calculator(const TensorIterator& iter) {
   AT_ASSERT(N == iter.ntensors());
@@ -60,8 +74,8 @@ static OffsetCalculator<N> make_offset_calculator(const TensorIterator& iter) {
   return OffsetCalculator<N>(iter.ndim(), iter.shape().data(), strides.data());
 }
 
-template<int nt, int vt, typename func_t>
-static void launch_kernel(int64_t N, const func_t& f) {
+template<int nt, int vt, bool grid_stride = false, typename func_t>
+static void launch_kernel(int64_t N, const func_t& f, typename std::enable_if<!grid_stride>::type* = nullptr) {
   if (N == 0) {
     return;
   }
@@ -72,13 +86,30 @@ static void launch_kernel(int64_t N, const func_t& f) {
   AT_CUDA_CHECK(cudaGetLastError());
 }
 
-template<typename func_t>
+// kernel execution configuration used for grid-stride loop
+template<int nt, int vt, bool grid_stride = false, typename func_t>
+static void launch_kernel(int64_t N, const func_t& f, typename std::enable_if<grid_stride>::type* = nullptr) {
+  if (N == 0) {
+    return;
+  }
+  dim3 block(nt);
+  dim3 grid((N + block.x - 1) / (block.x));
+  uint32_t blocks_per_sm = at::cuda::getCurrentDeviceProperties()->maxThreadsPerMultiProcessor / nt;
+  grid.x = std::min(
+    static_cast<uint32_t>(at::cuda::getCurrentDeviceProperties()->multiProcessorCount) * blocks_per_sm,
+    grid.x);
+  auto stream = at::cuda::getCurrentCUDAStream();
+  elementwise_kernel<nt, func_t><<<grid, block, 0, stream>>>(N, f);
+  AT_CUDA_CHECK(cudaGetLastError());
+}
+
+template<bool grid_stride = false, typename func_t>
 void gpu_nullary_kernel(TensorIterator& iter, const func_t& f) {
   ASSERT_HOST_DEVICE_LAMBDA(func_t);
 
   if (!iter.can_use_32bit_indexing()) {
     for (auto& sub_iter : iter.with_32bit_indexing()) {
-      gpu_nullary_kernel(sub_iter, f);
+      gpu_nullary_kernel<grid_stride>(sub_iter, f);
     }
     return;
   }
@@ -95,16 +126,16 @@ void gpu_nullary_kernel(TensorIterator& iter, const func_t& f) {
   if (iter.is_trivial_1d()) {
     auto strides = iter.get_inner_strides();
     int stride0 = strides[0];
-    launch_kernel<launch_size_1d, 1>(numel, [=]__device__(int idx) {
+    launch_kernel<launch_size_1d, 1, grid_stride>(numel, [=]__device__(int idx) {
       arg0_t* out = (arg0_t*)&out_data[stride0 * idx];
-      *out = f();
+      *out = f(idx);
     });
   } else {
     auto offset_calc = make_offset_calculator<1>(iter);
-    launch_kernel<launch_size_nd, launch_bound2>(numel, [=]__device__(int idx) {
+    launch_kernel<launch_size_nd, launch_bound2, grid_stride>(numel, [=]__device__(int idx) {
       auto offsets = offset_calc.get(idx);
       arg0_t* out = (arg0_t*)&out_data[offsets[0]];
-      *out = f();
+      *out = f(idx);
     });
   }
 }
@@ -134,7 +165,7 @@ void gpu_unary_kernel(TensorIterator& iter, const func_t& f) {
   if (iter.is_cpu_scalar(1)) {
     auto a = iter.scalar_value<arg1_t>(1);
     iter.remove_operand(1);
-    gpu_nullary_kernel(iter, [=]GPU_LAMBDA(void) {
+    gpu_nullary_kernel(iter, [=]GPU_LAMBDA(int) {
       return f(a);
     });
   } else if (iter.is_trivial_1d()) {
