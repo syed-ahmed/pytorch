@@ -10,22 +10,21 @@
 #include <curand_philox4x32_x.h>
 
 __device__ void random_float(float* x) {
+  for(int i=0; i < 4; i++) {
     curandStatePhilox4_32_10_t state;
     curand_init(
             123,
-            0,
+            i,
             4,
             &state);
     auto ret = curand_uniform4(&state);
-    x[0] = ret.x;
-    x[1] = ret.y;
-    x[2] = ret.z;
-    x[3] = ret.w;
+    x[i] = ret.x;
+  }
 }
 
 
 __global__ void myKernel(float* x) {
-    random_float(x);
+  random_float(x);
 }
 
 TEST(DistributionsTest, TestPhiloxIncrement) {
@@ -36,10 +35,11 @@ TEST(DistributionsTest, TestPhiloxIncrement) {
   //   increments philox and doesn't reuse randoms from previous calls.
   //    - We check that by first getting 4 randoms from uniform_.
   //      Once we get these 4 randoms, that would mean that philox counter for
-  //      thread 0, was incremented by 4.
-  //    - Now get 4 randoms with offset=4 from myKernel above.
-  //    - Now get 4 more randoms from uniform_ (note thread 0 for this call would
-  //      start from a philox_offset value of 4)
+  //      thread 0, 1, 2 and 3, was incremented by 4 (check calc_execution_policy
+  //      function for details).
+  //    - Now get 4 randoms with offset=4 for thread {0,1,2,3} from myKernel above.
+  //    - Now get 4 more randoms from uniform_ (note thread {0,1,2,3} for this call would
+  //      start from a philox_offset value of 1)
   //    - the 4 randoms from myKernel and the 4 randoms from the previous call
   //      of uniform_ should match, signifying that the philox offset was 
   //      incremented properly and no randoms are being reused from previous calls

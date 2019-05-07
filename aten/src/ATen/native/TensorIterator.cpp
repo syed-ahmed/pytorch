@@ -488,6 +488,7 @@ std::unique_ptr<TensorIterator> TensorIterator::unary_op(Tensor& out, const Tens
 
 std::unique_ptr<TensorIterator> TensorIterator::nullary_op(Tensor& out) {
   auto builder = TensorIterator::Builder();
+  builder.add_input(out);
   builder.add_output(out);
   return builder.build();
 }
